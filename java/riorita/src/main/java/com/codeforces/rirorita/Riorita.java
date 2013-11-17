@@ -338,7 +338,7 @@ public class Riorita {
     }
 
     public static void main(String[] args) throws IOException {
-        Riorita riorita = new Riorita("localhost", 78);
+        Riorita riorita = new Riorita("localhost", 8100);
 
 //        System.out.println(riorita.has("test"));
 //        System.out.println(riorita.get("test"));
@@ -361,7 +361,7 @@ public class Riorita {
             //System.out.println(new String(bytes));
             riorita.delete("test" + i);
 
-            if (i % 1000 == 0) {
+            if (i % 100 == 0) {
                 System.out.println(i);
             }
         }

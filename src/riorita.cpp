@@ -8,6 +8,7 @@
 #include <list>
 #include <map>
 #include <set>
+
 #include <boost/bind.hpp>
 #include <boost/shared_ptr.hpp>
 #include <boost/enable_shared_from_this.hpp>
@@ -18,32 +19,31 @@ using namespace std;
 
 class Session;
 typedef boost::shared_ptr<Session> SessionPtr;
-
 set<SessionPtr> sessions;
 
 map<string, string> storage;
 
 bool storageHas(const string& key)
 {
-    cout << "has '" << key << "'" << endl;
+//    cout << "has '" << key << "'" << endl;
     return storage.count(key) != 0;
 }
 
 string storageGet(const string& key)
 {
-    cout << "get '" << key << "'" << endl;
+//    cout << "get '" << key << "'" << endl;
     return storage[key];
 }
 
 void storageDelete(const string& key)
 {
-    cout << "delete '" << key << "'" << endl;
+//    cout << "delete '" << key << "'" << endl;
     storage.erase(key);
 }
 
 void storagePut(const string& key, const string& value)
 {
-    cout << "put '" << key << "' '" << value << "'" << endl;
+//    cout << "put '" << key << "' '" << value << "'" << endl;
     storage[key] = value;
 }
 
