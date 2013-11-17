@@ -1,4 +1,4 @@
-# [Curator](https://github.com/MikeMirzayanov/curator)
+# [Riorita](https://github.com/MikeMirzayanov/riorita)
 
 Simple C++-server to store byte-arrays by key, uses leveldb as a backend
 
@@ -6,7 +6,7 @@ It is written using C++ on the top of boost::asio::io_service. Also contains Jav
 
 ## Protocol
 
-Curator uses very simple binary request-response protocol. It supports keep-alive out-of-the box, a client should connect to the
+Riorita uses very simple binary request-response protocol. It supports keep-alive out-of-the box, a client should connect to the
 server via TCP and send requests. The client receives response after each request.
 
 Server closes connection on any error, client can reopen connection.
