@@ -46,7 +46,7 @@ struct Request {
 
 Request* parseRequest(Bytes& bytes, int32 pos, int32& parsedByteCount);
 
-Bytes newResponseHeader(const Request& request, bool success, bool verdict, int32 dataLength);
+Bytes newResponseHeader(const Request& request, bool success, bool verdict, const Bytes& data);
 
 }
 

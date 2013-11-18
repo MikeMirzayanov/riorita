@@ -120,6 +120,12 @@ Request* parseRequest(Bytes& bytes, int32 pos, int32& parsedByteCount)
         return null;
 }
 
+inline int32 copyBytes(const Bytes& value, byte* data)
+{
+    memcpy(data, value.data, value.size);
+    return value.size;
+}
+
 inline int32 copyByte(byte value, byte* data)
 {
     memcpy(data, &value, sizeof(byte));
@@ -150,7 +156,7 @@ inline int32 copyRequestHeader(const Request& request, bool success, byte* data)
     return pos;
 }
 
-Bytes newResponseHeader(const Request& request, bool success, bool verdict, int32 dataLength)
+Bytes newResponseHeader(const Request& request, bool success, bool verdict, const Bytes& data)
 {
     int32 headerSize = sizeof(int32) // total size
         + sizeof(byte) // magic byte
@@ -161,26 +167,29 @@ Bytes newResponseHeader(const Request& request, bool success, bool verdict, int3
 
     int32 byteCount = headerSize + (success
         ? 1 + (request.type == GET && verdict
-            ? sizeof(int32)
+            ? sizeof(int32) + data.size
             : 0
         )
         : 0
     );
 
-    byte* data = new byte[byteCount];
+    byte* result = new byte[byteCount];
     
-    int32 pos = copyInt32(byteCount, data);
-    pos += copyRequestHeader(request, success, data + pos);
+    int32 pos = copyInt32(byteCount, result);
+    pos += copyRequestHeader(request, success, result + pos);
 
     if (success)
     {
-        pos += copyByte(verdict ? 1 : 0, data + pos);
+        pos += copyByte(verdict ? 1 : 0, result + pos);
         if (request.type == GET && verdict)
-            pos += copyInt32(dataLength, data + pos);
+        {
+            pos += copyInt32(data.size, result + pos);
+            pos += copyBytes(data, result + pos);
+        }
     }
 
     assert(byteCount == pos);
-    return Bytes(byteCount, data);
+    return Bytes(byteCount, result);
 }
 
 }

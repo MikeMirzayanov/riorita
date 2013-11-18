@@ -97,8 +97,7 @@ public:
     {
         cout << "Connection closed." << endl;
 
-        responseData.reset();
-        responseHeader.reset();
+        response.reset();
         requestBytes.reset();
 
         if (null != request)
@@ -184,15 +183,19 @@ public:
                 // cout << "Parsed: " << request->id << endl;
 
                 bool success, verdict;
+                
+                riorita::Bytes responseData;
                 responseData.data = processRequest(*request, success, verdict, responseData.size);
-                responseHeader = riorita::newResponseHeader(*request, success, verdict, responseData.size);
+
+                response = riorita::newResponseHeader(*request, success, verdict, responseData);
+                responseData.reset();
 
                 // cout << "Ready to send: " << verdict << endl;
 
                 boost::asio::async_write(
                     _socket,
-                    boost::asio::buffer(responseHeader.data, responseHeader.size),
-                    boost::bind(&Session::handleResponseData, shared_from_this(), boost::asio::placeholders::error)
+                    boost::asio::buffer(response.data, response.size),
+                    boost::bind(&Session::handleEnd, shared_from_this(), boost::asio::placeholders::error)
                 );
             }
             else
@@ -214,43 +217,15 @@ public:
         }
     }
 
-    void handleResponseData(const boost::system::error_code& error)
-    {
-        requestBytes.reset();
-        responseHeader.reset();
-
-        if (!error)
-        {
-            // cout << "Response header sent" << endl;
-            // cout << "Ready to send response body" << endl;
-            if (responseData.size > 0)
-            {
-                // cout << "Has response body" << endl;
-                boost::asio::async_write(
-                    _socket,
-                    boost::asio::buffer(responseData.data, responseData.size),
-                    boost::bind(&Session::handleEnd, shared_from_this(), boost::asio::placeholders::error)
-                    );
-            }
-            else
-            {
-                // cout << "No response body" << endl;
-                handleStart(error);
-            }
-        }
-        else
-        {
-            cout << "error handleResponseData" << endl;
-            onError();
-        }
-    }
-
     void handleEnd(const boost::system::error_code& error)
     {
-        responseData.reset();
+        requestBytes.reset();
+        response.reset();
 
         if (!error)
+        {
             handleStart(error);
+        }
         else
         {
             cout << "error handleEnd" << endl;
@@ -263,8 +238,7 @@ private:
 
     riorita::Bytes requestBytes;
     riorita::Request* request;
-    riorita::Bytes responseData;
-    riorita::Bytes responseHeader;
+    riorita::Bytes response;
 };
 
 //----------------------------------------------------------------------
