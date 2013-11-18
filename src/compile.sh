@@ -1,1 +1,1 @@
-g++ -O2 -o riorita riorita.cpp protocol.cpp -lboost_system -lboost_thread -lpthread
+g++ -DHAS_LEVELDB -O2 -o riorita riorita.cpp protocol.cpp storage.cpp -lboost_system -lboost_thread -lboost_filesystem -lpthread -lleveldb -lsnappy

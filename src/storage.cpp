@@ -2,8 +2,13 @@
 
 #include <string>
 #include <map>
+#include <cstdlib>
+#include <cstdio>
 
 #include <boost/filesystem.hpp>
+
+#include "leveldb/db.h"
+#include "leveldb/cache.h"
 
 using namespace riorita;
 using namespace std;
@@ -122,37 +127,46 @@ struct LevelDbStorage: public Storage
 {
     LevelDbStorage(const StorageOptions& options)
     {
-        // No operations.
+        this->options.block_cache = leveldb::NewLRUCache(1024 * 1048576);
+        this->options.create_if_missing = true;
+        leveldb::Status status = leveldb::DB::Open(this->options, options.directory, &db);
+        assert(status.ok());
     }
 
     bool has(const string& key)
     {
-        return data.count(key) != 0;
+        std::string value;
+        leveldb::Status s = db->Get(leveldb::ReadOptions(), key, &value);
+        return s.ok();
     }
 
     bool get(const string& key, string& value)
     {
-        if (data.count(key) != 0)
-        {
-            value = data[key];
-            return true;
-        }
-        else
-            return false;
+        leveldb::Status s = db->Get(leveldb::ReadOptions(), key, &value);
+        return s.ok();
     }
 
     void erase(const string& key)
     {
-        data.erase(key);
+        db->Delete(leveldb::WriteOptions(), key);
     }
 
     void put(const string& key, const string& value)
     {
-        data[key] = value;
+        db->Put(leveldb::WriteOptions(), key, value);
+    }
+
+    ~LevelDbStorage()
+    {
+        delete db;
+
+        if (options.block_cache)
+            delete options.block_cache;
     }
 
 private:
-    map<string, string> data;
+    leveldb::DB* db;
+    leveldb::Options options;
 };
 
 #endif
