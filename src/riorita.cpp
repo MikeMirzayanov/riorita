@@ -1,4 +1,5 @@
 #include "protocol.h"
+#include "storage.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -14,6 +15,8 @@
 #include <boost/enable_shared_from_this.hpp>
 #include <boost/asio.hpp>
 
+#include <boost/filesystem.hpp>
+
 using boost::asio::ip::tcp;
 using namespace std;
 
@@ -21,31 +24,7 @@ class Session;
 typedef boost::shared_ptr<Session> SessionPtr;
 set<SessionPtr> sessions;
 
-map<string, string> storage;
-
-bool storageHas(const string& key)
-{
-//    cout << "has '" << key << "'" << endl;
-    return storage.count(key) != 0;
-}
-
-string storageGet(const string& key)
-{
-//    cout << "get '" << key << "'" << endl;
-    return storage[key];
-}
-
-void storageDelete(const string& key)
-{
-//    cout << "delete '" << key << "'" << endl;
-    storage.erase(key);
-}
-
-void storagePut(const string& key, const string& value)
-{
-//    cout << "put '" << key << "' '" << value << "'" << endl;
-    storage[key] = value;
-}
+riorita::Storage* storage;
 
 riorita::Bytes processRequest(const riorita::Request& request)
 {
@@ -58,23 +37,23 @@ riorita::Bytes processRequest(const riorita::Request& request)
 
     string key(request.key.data, request.key.data + request.key.size);
 
-    if (request.type == riorita::HAS || request.type == riorita::GET)
-        verdict = storageHas(key);
+    if (request.type == riorita::HAS)
+        verdict = storage->has(key);
 
-    if (request.type == riorita::GET && verdict)
-        data = storageGet(key);
+    if (request.type == riorita::GET)
+        verdict = storage->get(key, data);
 
 #undef DELETE
     if (request.type == riorita::DELETE)
     {
-        storageDelete(key);
+        storage->erase(key);
         verdict = true;
     }
 
     if (request.type == riorita::PUT)
     {
         string value(request.value.data, request.value.data + request.value.size);
-        storagePut(key, value);
+        storage->put(key, value);
         verdict = true;
     }
 
@@ -262,6 +241,15 @@ typedef std::list<RioritaServerPtr> RioritaServerList;
 
 void init()
 {
+    riorita::StorageOptions opts;
+    opts.directory = "data";
+
+    storage = riorita::newStorage(riorita::FILES, opts);
+    if (null == storage)
+    {
+        std::cerr << "Can't initialize storage\n";
+        exit(1);
+    }
 }
 
 int main(int argc, char* argv[])
