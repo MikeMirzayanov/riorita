@@ -341,7 +341,7 @@ public class Riorita {
     private static String getRandomString(int length) {
         StringBuilder result = new StringBuilder(length);
         for (int i = 0; i < length; i++) {
-            result.append('a' + TEST_RANDOM.nextInt(26));
+            result.append((char)('a' + TEST_RANDOM.nextInt(26)));
         }
 
         return result.toString();
@@ -363,6 +363,8 @@ public class Riorita {
         long start = System.currentTimeMillis();
 
         for (int i = 0; i < iterations; i++) {
+            if (i % 10000 == 0) System.out.println("Done " + i + " in " + (System.currentTimeMillis() - start) + " ms.");
+
             String key = keysList.get(TEST_RANDOM.nextInt(keysList.size()));
 
             boolean has = cache.containsKey(key);
@@ -397,10 +399,16 @@ public class Riorita {
     public static void main(String[] args) throws IOException {
         Riorita riorita = new Riorita("localhost", 8100);
 
-        testSize(riorita, 1000000, 100);
-        testSize(riorita, 10000000, 10000);
-        testSize(riorita, 100000000, 100000);
-        testSize(riorita, 1000000000, 1000000);
+//        testSize(riorita, 1000000, 100);
+//        testSize(riorita, 10000000, 10000);
+//        testSize(riorita, 100000000, 100000);
+//        testSize(riorita, 100000000, 1000000);
+//        testSize(riorita, 100000000, 10000000);
+//        testSize(riorita, 200000000, 20000000);
+//        testSize(riorita, 500000000, 50000000);
+//        testSize(riorita, 500000000, 100000000);
+
+        testSize(riorita, 1000000000, 1000);
         if (true) {
             return;
         }

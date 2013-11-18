@@ -10,6 +10,7 @@
 #ifdef HAS_LEVELDB
 #   include "leveldb/db.h"
 #   include "leveldb/cache.h"
+#   include "leveldb/filter_policy.h"
 #endif
 
 using namespace riorita;
@@ -119,7 +120,11 @@ private:
 
     string getFileName(const string& key)
     {
-        return options.directory + '/' + key + ".bin";
+        string path;
+        for (size_t i = 2; i <= 8; i+=2)
+            if (key.size() >= i)
+                path += key.substr(i - 2, 2) + '/';
+        return options.directory + '/' + path + key + ".bin";
     }
 };
 
@@ -129,8 +134,11 @@ struct LevelDbStorage: public Storage
 {
     LevelDbStorage(const StorageOptions& options)
     {
-        this->options.block_cache = leveldb::NewLRUCache(1024 * 1048576);
+        this->options.block_cache = leveldb::NewLRUCache(128 * 1024);
         this->options.create_if_missing = true;
+        this->options.write_buffer_size = 64 * 1024 * 1024;
+        this->options.block_size = 65536;
+        this->options.filter_policy = leveldb::NewBloomFilterPolicy(10);
         leveldb::Status status = leveldb::DB::Open(this->options, options.directory, &db);
         assert(status.ok());
     }
