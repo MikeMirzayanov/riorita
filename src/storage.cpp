@@ -7,8 +7,10 @@
 
 #include <boost/filesystem.hpp>
 
-#include "leveldb/db.h"
-#include "leveldb/cache.h"
+#ifdef HAS_LEVELDB
+#   include "leveldb/db.h"
+#   include "leveldb/cache.h"
+#endif
 
 using namespace riorita;
 using namespace std;

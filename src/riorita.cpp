@@ -244,7 +244,7 @@ void init()
     riorita::StorageOptions opts;
     opts.directory = "data";
 
-    storage = riorita::newStorage(riorita::LEVELDB, opts);
+    storage = riorita::newStorage(riorita::FILES, opts);
     if (null == storage)
     {
         std::cerr << "Can't initialize storage\n";

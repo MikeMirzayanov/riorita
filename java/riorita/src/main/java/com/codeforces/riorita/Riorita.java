@@ -9,7 +9,7 @@ import java.net.Socket;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.Random;
+import java.util.*;
 
 public class Riorita {
     private static final byte MAGIC_BYTE = 113;
@@ -337,21 +337,87 @@ public class Riorita {
         T run() throws IOException;
     }
 
-    public static void main(String[] args) throws IOException {
-        Riorita riorita = new Riorita("localhost", 8102);
+    private static final Random TEST_RANDOM = new Random(13);
+    private static String getRandomString(int length) {
+        StringBuilder result = new StringBuilder(length);
+        for (int i = 0; i < length; i++) {
+            result.append('a' + TEST_RANDOM.nextInt(26));
+        }
 
-//        System.out.println(riorita.has("test"));
-//        System.out.println(riorita.get("test"));
-//        riorita.put("test", "tezt".getBytes());
-//        System.out.println(riorita.has("test"));
-//        System.out.println(new String(riorita.get("test")));
-//        riorita.delete("test");
-//        System.out.println(riorita.has("test"));
-//        System.out.println(riorita.get("test"));
-//
-//        if (true) {
-//            return;
-//        }
+        return result.toString();
+    }
+
+    private static void testSize(Riorita riorita, int total, int size) throws IOException {
+        int iterations = total / size;
+
+        System.out.println("Doing " + iterations + " iterations for size " + size + ".");
+
+        Set<String> keys = new HashSet<>();
+        while (keys.size() < iterations / 2) {
+            keys.add(getRandomString(32));
+        }
+
+        Map<String, byte[]> cache = new HashMap<>();
+        List<String> keysList = new ArrayList<>(keys);
+
+        long start = System.currentTimeMillis();
+
+        for (int i = 0; i < iterations; i++) {
+            String key = keysList.get(TEST_RANDOM.nextInt(keysList.size()));
+
+            boolean has = cache.containsKey(key);
+            if (riorita.has(key) != has) {
+                throw new RuntimeException("Invalid has.");
+            }
+
+            byte[] result = riorita.get(key);
+            //noinspection DoubleNegation
+            if ((result != null) != has) {
+                throw new RuntimeException("Invalid get (has).");
+            }
+
+            if (has) {
+                if (!Arrays.equals(result, cache.get(key))) {
+                    throw new RuntimeException("Invalid get.");
+                }
+            }
+
+            for (int j = 0; j < 5; j++) {
+                riorita.get(keysList.get(TEST_RANDOM.nextInt(keysList.size())));
+            }
+
+            result = getRandomString(size).getBytes();
+            riorita.put(key, result);
+            cache.put(key, result);
+        }
+
+        System.out.println("Completed in " + (System.currentTimeMillis() - start) + " ms.");
+    }
+
+    public static void main(String[] args) throws IOException {
+        Riorita riorita = new Riorita("localhost", 8100);
+
+        testSize(riorita, 1000000, 100);
+        testSize(riorita, 10000000, 10000);
+        testSize(riorita, 100000000, 100000);
+        testSize(riorita, 1000000000, 1000000);
+        if (true) {
+            return;
+        }
+
+        System.out.println(riorita.has("test"));
+        System.out.println(riorita.get("test"));
+        riorita.put("test", "tezt".getBytes());
+        System.out.println(riorita.has("test"));
+        System.out.println(new String(riorita.get("test")));
+        riorita.delete("test");
+        System.out.println(riorita.has("test"));
+        System.out.println(riorita.get("test"));
+
+        if (true) {
+            return;
+        }
+
         long start = System.currentTimeMillis();
 
         int tt = 0;
@@ -359,9 +425,9 @@ public class Riorita {
             riorita.put("test" + i, ("privet!" + i).getBytes());
             byte[] bytes = riorita.get("test" + i);
             //System.out.println(new String(bytes));
-            riorita.delete("test" + i);
+            //riorita.delete("test" + i);
 
-            if (i % 100 == 0) {
+            if (i % 1000 == 0) {
                 System.out.println(i);
             }
         }
