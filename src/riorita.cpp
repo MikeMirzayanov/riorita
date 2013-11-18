@@ -47,18 +47,14 @@ void storagePut(const string& key, const string& value)
     storage[key] = value;
 }
 
-riorita::byte* processRequest(const riorita::Request& request, bool& success, bool& verdict, riorita::int32& dataLength)
+riorita::Bytes processRequest(const riorita::Request& request)
 {
-    success = true;
-    verdict = false;
-    dataLength = 0;
-    riorita::byte* result = null;
+    bool success = true;
+    bool verdict = false;
+    string data;
 
     if (request.type == riorita::PING)
-    {
         verdict = true;
-        return result;
-    }
 
     string key(request.key.data, request.key.data + request.key.size);
 
@@ -66,12 +62,7 @@ riorita::byte* processRequest(const riorita::Request& request, bool& success, bo
         verdict = storageHas(key);
 
     if (request.type == riorita::GET && verdict)
-    {
-        string data = storageGet(key);
-        result = new riorita::byte[data.length()];
-        memcpy(result, data.c_str(), data.length());
-        dataLength = data.length();
-    }
+        data = storageGet(key);
 
 #undef DELETE
     if (request.type == riorita::DELETE)
@@ -87,7 +78,9 @@ riorita::byte* processRequest(const riorita::Request& request, bool& success, bo
         verdict = true;
     }
 
-    return result;
+    return newResponse(request, success, verdict,
+            static_cast<riorita::int32>(data.length()),
+            reinterpret_cast<const riorita::byte*>(data.c_str()));
 }
 
 class Session: public boost::enable_shared_from_this<Session>
@@ -105,7 +98,7 @@ public:
     }
 
     Session(boost::asio::io_service& io_service)
-        : _socket(io_service)
+        : _socket(io_service), request(null)
     {
     }
 
@@ -132,8 +125,6 @@ public:
     {
         if (!error)
         {
-            // cout << "Started to read request size" << endl;
-
             boost::asio::async_read(
                 _socket,
                 boost::asio::buffer(&requestBytes.size, sizeof(requestBytes.size)),
@@ -152,10 +143,8 @@ public:
         if (!error)
         {
             requestBytes.size -= sizeof(riorita::int32);
-            // cout << "Request size is " << requestBytes.size << endl;
             requestBytes.data = new riorita::byte[requestBytes.size];
 
-            // cout << "Started to read request body" << endl;
             boost::asio::async_read(
                 _socket,
                 boost::asio::buffer(requestBytes.data, requestBytes.size),
@@ -173,24 +162,12 @@ public:
     {
         if (!error)
         {
-            // cout << "Ready to parse request" << endl;
-
             riorita::int32 parsedByteCount;
             request = parseRequest(requestBytes, 0, parsedByteCount);
 
             if (request != null && parsedByteCount == requestBytes.size)
             {
-                // cout << "Parsed: " << request->id << endl;
-
-                bool success, verdict;
-                
-                riorita::Bytes responseData;
-                responseData.data = processRequest(*request, success, verdict, responseData.size);
-
-                response = riorita::newResponseHeader(*request, success, verdict, responseData);
-                responseData.reset();
-
-                // cout << "Ready to send: " << verdict << endl;
+                response = processRequest(*request);
 
                 boost::asio::async_write(
                     _socket,
@@ -304,7 +281,7 @@ int main(int argc, char* argv[])
         RioritaServerList servers;
         for (int i = 1; i < argc; ++i)
         {
-            tcp::endpoint endpoint(tcp::v4(), atoi(argv[i]));
+            tcp::endpoint endpoint(tcp::v4(), short(atoi(argv[i])));
             RioritaServerPtr server(new RioritaServer(io_service, endpoint));
             servers.push_back(server);
         }
