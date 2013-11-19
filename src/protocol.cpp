@@ -9,8 +9,14 @@ using namespace std;
 
 namespace riorita {
 
+const char* requestTypeNames[] = {"?", "PING", "HAS", "GET", "PUT", "DELETE"};
+
 byte toByte(RequestType requestType) {
     return byte(requestType);
+}
+
+const char* toChars(RequestType requestType) {
+    return requestTypeNames[toByte(requestType)];    
 }
 
 Bytes::Bytes(int32 size, byte* data): size(size), data(data) {

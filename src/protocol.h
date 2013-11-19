@@ -24,6 +24,7 @@ enum RequestType {
 };
 
 byte toByte(RequestType requestType);
+const char* toChars(RequestType requestType);
 
 struct Bytes {
     int32 size;
