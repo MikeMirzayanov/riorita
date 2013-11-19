@@ -36,7 +36,7 @@ long long currentTimeMillis()
     return (long long)(clock() / double(CLOCKS_PER_SEC) * 1000.0 + 0.5);
 }
 
-riorita::Bytes processRequest(tcp::socket& _socket, const riorita::Request& request)
+riorita::Bytes processRequest(const string& remoteAddr, const riorita::Request& request)
 {
     long long startTimeMillis = currentTimeMillis();
 
@@ -72,7 +72,7 @@ riorita::Bytes processRequest(tcp::socket& _socket, const riorita::Request& requ
     cout << "Processed " << riorita::toChars(request.type)
          << " in " << (currentTimeMillis() - startTimeMillis) << " ms,"
          << " returns " << success << ", " << verdict << ", " << data.length()
-         << " [" << boost::lexical_cast<std::string>(_socket.remote_endpoint()) << ", id=" << request.id << "]"
+         << " [" << remoteAddr << ", id=" << request.id << "]"
          << endl;
 
     return newResponse(request, success, verdict,
@@ -85,7 +85,7 @@ class Session: public boost::enable_shared_from_this<Session>
 public:
     virtual ~Session()
     {
-        cout << "Connection closed " << boost::lexical_cast<std::string>(_socket.remote_endpoint()) << endl;
+        cout << "Connection closed " << remoteAddr << endl;
 
         response.reset();
         requestBytes.reset();
@@ -101,7 +101,7 @@ public:
 
     void onError()
     {
-        cout << "Ready to close " << boost::lexical_cast<std::string>(_socket.remote_endpoint()) << endl;
+        cout << "Ready to close " << remoteAddr << endl;
         sessions.erase(shared_from_this());
     }
 
@@ -112,7 +112,8 @@ public:
 
     void start()
     {
-        cout << "New connection " << boost::lexical_cast<std::string>(_socket.remote_endpoint()) << endl;
+        remoteAddr = boost::lexical_cast<std::string>(_socket.remote_endpoint());
+        cout << "New connection " << remoteAddr << endl;
         sessions.insert(shared_from_this());
         boost::system::error_code error;
         handleStart(error);    
@@ -131,7 +132,7 @@ public:
         }
         else
         {
-            cout << "error handleStart: " << boost::lexical_cast<std::string>(_socket.remote_endpoint()) << endl;
+            cout << "error handleStart: " << remoteAddr << endl;
             onError();
         }
     }
@@ -154,7 +155,7 @@ public:
         }
         else
         {
-            cout << "error handleRead: " << boost::lexical_cast<std::string>(_socket.remote_endpoint()) << endl;
+            cout << "error handleRead: " << remoteAddr << endl;
             onError();
         }
     }
@@ -168,7 +169,7 @@ public:
 
             if (request != null && parsedByteCount == requestBytes.size)
             {
-                response = processRequest(_socket, *request);
+                response = processRequest(remoteAddr, *request);
 
                 boost::asio::async_write(
                     _socket,
@@ -179,7 +180,7 @@ public:
             }
             else
             {
-                cout << "Can't parse request: " << boost::lexical_cast<std::string>(_socket.remote_endpoint()) << endl;
+                cout << "Can't parse request: " << remoteAddr << endl;
                 onError();
             }
 
@@ -191,7 +192,7 @@ public:
         }
         else
         {
-            cout << "error handleRequest: " << boost::lexical_cast<std::string>(_socket.remote_endpoint()) << endl;
+            cout << "error handleRequest: " << remoteAddr << endl;
             onError();
         }
     }
@@ -209,7 +210,7 @@ public:
         }
         else
         {
-            cout << "error handleEnd: " << boost::lexical_cast<std::string>(_socket.remote_endpoint()) << endl;
+            cout << "error handleEnd: " << remoteAddr << endl;
             onError();
         }
     }
@@ -220,6 +221,8 @@ private:
     riorita::Bytes requestBytes;
     riorita::Request* request;
     riorita::Bytes response;
+
+    string remoteAddr;
 };
 
 //----------------------------------------------------------------------
