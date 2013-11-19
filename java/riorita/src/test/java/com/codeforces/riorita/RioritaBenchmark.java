@@ -4,7 +4,8 @@ import java.io.IOException;
 import java.util.*;
 
 public class RioritaBenchmark {
-    private static final Random TEST_RANDOM = new Random(13);
+    private static final Random TEST_RANDOM = new Random(System.currentTimeMillis());
+
     private static String getRandomString(int length) {
         StringBuilder result = new StringBuilder(length);
         for (int i = 0; i < length; i++) {
@@ -14,8 +15,16 @@ public class RioritaBenchmark {
         return result.toString();
     }
 
-    private static void validate(Riorita riorita, int total, int size) throws IOException {
-        int iterations = total / size;
+    private static byte[] getRandomBytes(int length) {
+        byte[] bytes = new byte[length];
+
+        TEST_RANDOM.nextBytes(bytes);
+
+        return bytes;
+    }
+
+    private static void validate(Riorita riorita, long total, long size) throws IOException {
+        long iterations = total / size;
 
         System.out.println("Validation: doing " + iterations + " iterations for size " + size + ".");
 
@@ -55,7 +64,7 @@ public class RioritaBenchmark {
                 riorita.get(keysList.get(TEST_RANDOM.nextInt(keysList.size())));
             }
 
-            result = getRandomString(size).getBytes();
+            result = getRandomString((int) size).getBytes();
             riorita.put(key, result);
             cache.put(key, result);
         }
@@ -63,8 +72,8 @@ public class RioritaBenchmark {
         System.out.println("Completed in " + (System.currentTimeMillis() - start) + " ms.");
     }
 
-    private static void test(Riorita riorita, int total, int size) throws IOException {
-        int iterations = total / size;
+    private static void test(Riorita riorita, long total, long size) throws IOException {
+        long iterations = total / size;
 
         System.out.println("Testing: doing " + iterations + " iterations for size " + size + ".");
 
@@ -96,10 +105,10 @@ public class RioritaBenchmark {
 
             if (!has) {
                 for (int j = 0; j < 5; j++) {
-                    riorita.get(keysList.get(TEST_RANDOM.nextInt(keysList.size())));
+                    riorita.get(getRandomString(32));
                 }
 
-                result = getRandomString(size).getBytes();
+                result = getRandomBytes((int) size);
                 riorita.put(key, result);
                 cache.add(key);
             }
@@ -112,14 +121,14 @@ public class RioritaBenchmark {
         Riorita riorita = new Riorita("localhost", 8100);
 
         if (args[0].startsWith("val")) {
-            int total = Integer.parseInt(args[1]);
-            int size = Integer.parseInt(args[2]);
+            long total = Long.parseLong(args[1]);
+            long size = Long.parseLong(args[2]);
             validate(riorita, total, size);
         }
 
         if (args[0].startsWith("test")) {
-            int total = Integer.parseInt(args[1]);
-            int size = Integer.parseInt(args[2]);
+            long total = Long.parseLong(args[1]);
+            long size = Long.parseLong(args[2]);
             test(riorita, total, size);
         }
     }

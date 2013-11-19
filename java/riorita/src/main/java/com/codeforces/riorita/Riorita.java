@@ -9,12 +9,14 @@ import java.net.Socket;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.*;
+import java.util.Random;
 
 public class Riorita {
     private static final byte MAGIC_BYTE = 113;
     private static final byte PROTOCOL_VERSION = 1;
-    private static final int MAX_RECONNECT_COUNT = 20;
+    private static final int MAX_RECONNECT_COUNT = 10;
+
+    private static final long WARN_THRESHOLD_MILLIS = 100;
 
     private final Random random = new Random(Riorita.class.hashCode() ^ this.hashCode());
 
@@ -69,42 +71,52 @@ public class Riorita {
     }
 
     private <T> T runOperation(Operation<T> operation) throws IOException {
-        if (!reconnect) {
-            return operation.run();
-        } else {
-            IOException exception = null;
-            int iteration = 0;
+        long startTimeMills = System.currentTimeMillis();
 
-            while (iteration < MAX_RECONNECT_COUNT) {
-                if (socket == null || !socket.isConnected() || socket.isClosed()) {
-                    reconnectQuietly();
-                }
+        try {
+            if (!reconnect) {
+                return operation.run();
+            } else {
+                IOException exception = null;
+                int iteration = 0;
 
-                iteration++;
+                while (iteration < MAX_RECONNECT_COUNT) {
+                    if (socket == null || !socket.isConnected() || socket.isClosed()) {
+                        reconnectQuietly();
+                    }
 
-                if (socket != null && socket.isConnected() && !socket.isClosed()) {
-                    try {
-                        return operation.run();
-                    } catch (IOException e) {
-                        System.out.println(e);
-                        exception = e;
+                    iteration++;
+
+                    if (socket != null && socket.isConnected() && !socket.isClosed()) {
+                        try {
+                            return operation.run();
+                        } catch (IOException e) {
+                            System.out.println(e);
+                            exception = e;
+                            try {
+                                Thread.sleep(iteration * 100);
+                            } catch (InterruptedException ignored) {
+                                // No operations.
+                            }
+                            reconnectQuietly();
+                        }
+                    } else {
                         try {
                             Thread.sleep(iteration * 100);
                         } catch (InterruptedException ignored) {
                             // No operations.
                         }
-                        reconnectQuietly();
-                    }
-                } else {
-                    try {
-                        Thread.sleep(iteration * 100);
-                    } catch (InterruptedException ignored) {
-                        // No operations.
                     }
                 }
-            }
 
-            throw exception == null ? new IOException("Can't connect to " + socketAddress + ".") : exception;
+                throw exception == null ? new IOException("Can't connect to " + socketAddress + ".") : exception;
+            }
+        } finally {
+            long duration = System.currentTimeMillis() - startTimeMills;
+
+            if (duration > WARN_THRESHOLD_MILLIS) {
+                System.err.println("WARN: Too long operation " + operation.getType() + " [takes " + duration + " ms.]");
+            }
         }
     }
 
@@ -208,6 +220,11 @@ public class Riorita {
 
                 return readResponseVerdict(requestId);
             }
+
+            @Override
+            public Type getType() {
+                return Type.PING;
+            }
         });
     }
 
@@ -230,6 +247,11 @@ public class Riorita {
 
                 return readResponseVerdict(requestId);
             }
+
+            @Override
+            public Type getType() {
+                return Type.HAS;
+            }
         });
     }
 
@@ -251,6 +273,11 @@ public class Riorita {
                 }
 
                 return readResponseVerdict(requestId);
+            }
+
+            @Override
+            public Type getType() {
+                return Type.DELETE;
             }
         });
     }
@@ -275,6 +302,11 @@ public class Riorita {
                 }
 
                 return readResponseVerdict(requestId);
+            }
+
+            @Override
+            public Type getType() {
+                return Type.PUT;
             }
         });
     }
@@ -318,6 +350,11 @@ public class Riorita {
                     return valueBuffer.array();
                 }
             }
+
+            @Override
+            public Type getType() {
+                return Type.GET;
+            }
         });
     }
 
@@ -335,111 +372,6 @@ public class Riorita {
 
     private interface Operation<T> {
         T run() throws IOException;
-    }
-
-    private static final Random TEST_RANDOM = new Random(13);
-    private static String getRandomString(int length) {
-        StringBuilder result = new StringBuilder(length);
-        for (int i = 0; i < length; i++) {
-            result.append((char)('a' + TEST_RANDOM.nextInt(26)));
-        }
-
-        return result.toString();
-    }
-
-    private static void testSize(Riorita riorita, int total, int size) throws IOException {
-        int iterations = total / size;
-
-        System.out.println("Doing " + iterations + " iterations for size " + size + ".");
-
-        Set<String> keys = new HashSet<>();
-        while (keys.size() < iterations / 2) {
-            keys.add(getRandomString(32));
-        }
-
-        Map<String, byte[]> cache = new HashMap<>();
-        List<String> keysList = new ArrayList<>(keys);
-
-        long start = System.currentTimeMillis();
-
-        for (int i = 0; i < iterations; i++) {
-            if (i % 10000 == 0) System.out.println("Done " + i + " in " + (System.currentTimeMillis() - start) + " ms.");
-
-            String key = keysList.get(TEST_RANDOM.nextInt(keysList.size()));
-
-            boolean has = cache.containsKey(key);
-            if (riorita.has(key) != has) {
-                throw new RuntimeException("Invalid has.");
-            }
-
-            byte[] result = riorita.get(key);
-            //noinspection DoubleNegation
-            if ((result != null) != has) {
-                throw new RuntimeException("Invalid get (has).");
-            }
-
-            if (has) {
-                if (!Arrays.equals(result, cache.get(key))) {
-                    throw new RuntimeException("Invalid get.");
-                }
-            }
-
-            for (int j = 0; j < 5; j++) {
-                riorita.get(keysList.get(TEST_RANDOM.nextInt(keysList.size())));
-            }
-
-            result = getRandomString(size).getBytes();
-            riorita.put(key, result);
-            cache.put(key, result);
-        }
-
-        System.out.println("Completed in " + (System.currentTimeMillis() - start) + " ms.");
-    }
-
-    public static void main(String[] args) throws IOException {
-        Riorita riorita = new Riorita("localhost", 8100);
-
-//        testSize(riorita, 1000000, 100);
-//        testSize(riorita, 10000000, 10000);
-//        testSize(riorita, 100000000, 100000);
-//        testSize(riorita, 100000000, 1000000);
-//        testSize(riorita, 100000000, 10000000);
-//        testSize(riorita, 200000000, 20000000);
-//        testSize(riorita, 500000000, 50000000);
-//        testSize(riorita, 500000000, 100000000);
-
-        testSize(riorita, 1000000000, 1000);
-        if (true) {
-            return;
-        }
-
-        System.out.println(riorita.has("test"));
-        System.out.println(riorita.get("test"));
-        riorita.put("test", "tezt".getBytes());
-        System.out.println(riorita.has("test"));
-        System.out.println(new String(riorita.get("test")));
-        riorita.delete("test");
-        System.out.println(riorita.has("test"));
-        System.out.println(riorita.get("test"));
-
-        if (true) {
-            return;
-        }
-
-        long start = System.currentTimeMillis();
-
-        int tt = 0;
-        for (int i = 0; i < 100000; i++) {
-            riorita.put("test" + i, ("privet!" + i).getBytes());
-            byte[] bytes = riorita.get("test" + i);
-            //System.out.println(new String(bytes));
-            //riorita.delete("test" + i);
-
-            if (i % 1000 == 0) {
-                System.out.println(i);
-            }
-        }
-
-        System.out.println((System.currentTimeMillis() - start) + " ms");
+        Type getType();
     }
 }
