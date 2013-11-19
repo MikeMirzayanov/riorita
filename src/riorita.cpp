@@ -70,20 +70,13 @@ class Session: public boost::enable_shared_from_this<Session>
 public:
     virtual ~Session()
     {
-        cout << "Connection closed: " << int(this) << endl;
+        cout << "Connection closed" << endl;
 
         response.reset();
-        cout << 2 << endl;
         requestBytes.reset();
-        cout << 3 << endl;
 
         if (null != request)
-        {
-            cout << 4 << endl;
             delete[] request;
-        }
-
-        cout << 5 << endl;
     }
 
     Session(boost::asio::io_service& io_service)
