@@ -22,7 +22,7 @@
 using boost::asio::ip::tcp;
 using namespace std;
 
-const riorita::int32 MIN_VALID_REQUEST_SIZE = 19;
+const riorita::int32 MIN_VALID_REQUEST_SIZE = 15;
 const riorita::int32 MAX_VALID_REQUEST_SIZE = 1073741824;
 
 class Session;
@@ -155,7 +155,11 @@ public:
         }
         else
         {
-            cout << "error handleRead: " << remoteAddr << endl;
+            cout << "error handleRead: " << remoteAddr << ":"
+                << " error=" << error
+                << " bytes_transferred=" << bytes_transferred
+                << endl;
+            ;
             onError();
         }
     }
