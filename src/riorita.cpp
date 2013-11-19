@@ -20,6 +20,9 @@
 using boost::asio::ip::tcp;
 using namespace std;
 
+const riorita::int32 MIN_VALID_REQUEST_SIZE = 19;
+const riorita::int32 MAX_VALID_REQUEST_SIZE = 1073741824;
+
 class Session;
 typedef boost::shared_ptr<Session> SessionPtr;
 set<SessionPtr> sessions;
@@ -67,13 +70,20 @@ class Session: public boost::enable_shared_from_this<Session>
 public:
     virtual ~Session()
     {
-        cout << "Connection closed." << endl;
+        cout << "Connection closed: " << int(this) << endl;
 
         response.reset();
+        cout << 2 << endl;
         requestBytes.reset();
+        cout << 3 << endl;
 
         if (null != request)
+        {
+            cout << 4 << endl;
             delete[] request;
+        }
+
+        cout << 5 << endl;
     }
 
     Session(boost::asio::io_service& io_service)
@@ -107,7 +117,8 @@ public:
             boost::asio::async_read(
                 _socket,
                 boost::asio::buffer(&requestBytes.size, sizeof(requestBytes.size)),
-                boost::bind(&Session::handleRead, shared_from_this(), boost::asio::placeholders::error)
+                boost::bind(&Session::handleRead, shared_from_this(), boost::asio::placeholders::error,
+                    boost::asio::placeholders::bytes_transferred)
             );
         }
         else
@@ -117,9 +128,11 @@ public:
         }
     }
 
-    void handleRead(const boost::system::error_code& error)
+    void handleRead(const boost::system::error_code& error, std::size_t bytes_transferred)
     {
-        if (!error)
+        if (!error && bytes_transferred == sizeof(requestBytes.size)
+                && requestBytes.size >= MIN_VALID_REQUEST_SIZE
+                && requestBytes.size <= MAX_VALID_REQUEST_SIZE)
         {
             requestBytes.size -= sizeof(riorita::int32);
             requestBytes.data = new riorita::byte[requestBytes.size];
@@ -127,7 +140,8 @@ public:
             boost::asio::async_read(
                 _socket,
                 boost::asio::buffer(requestBytes.data, requestBytes.size),
-                boost::bind(&Session::handleRequest, shared_from_this(), boost::asio::placeholders::error)
+                boost::bind(&Session::handleRequest, shared_from_this(), boost::asio::placeholders::error,
+                    boost::asio::placeholders::bytes_transferred)
             );
         }
         else
@@ -137,9 +151,9 @@ public:
         }
     }
 
-    void handleRequest(const boost::system::error_code& error)
+    void handleRequest(const boost::system::error_code& error, std::size_t bytes_transferred)
     {
-        if (!error)
+        if (!error && riorita::int32(bytes_transferred) == requestBytes.size)
         {
             riorita::int32 parsedByteCount;
             request = parseRequest(requestBytes, 0, parsedByteCount);
@@ -151,7 +165,8 @@ public:
                 boost::asio::async_write(
                     _socket,
                     boost::asio::buffer(response.data, response.size),
-                    boost::bind(&Session::handleEnd, shared_from_this(), boost::asio::placeholders::error)
+                    boost::bind(&Session::handleEnd, shared_from_this(), boost::asio::placeholders::error,
+                    boost::asio::placeholders::bytes_transferred)
                 );
             }
             else
@@ -173,12 +188,14 @@ public:
         }
     }
 
-    void handleEnd(const boost::system::error_code& error)
+    void handleEnd(const boost::system::error_code& error, std::size_t bytes_transferred)
     {
+        std::size_t responseSize = response.size;
+
         requestBytes.reset();
         response.reset();
 
-        if (!error)
+        if (!error && bytes_transferred == responseSize)
         {
             handleStart(error);
         }
@@ -244,7 +261,7 @@ void init()
     riorita::StorageOptions opts;
     opts.directory = "data";
 
-    storage = riorita::newStorage(riorita::LEVELDB, opts);
+    storage = riorita::newStorage(riorita::MEMORY, opts);
     if (null == storage)
     {
         std::cerr << "Can't initialize storage\n";
