@@ -16,8 +16,23 @@
 #include <boost/shared_ptr.hpp>
 #include <boost/enable_shared_from_this.hpp>
 #include <boost/asio.hpp>
-
 #include <boost/filesystem.hpp>
+#include <boost/log/trivial.hpp>
+#include <boost/log/expressions.hpp>
+#include <boost/log/sources/severity_logger.hpp>
+#include <boost/log/sources/record_ostream.hpp>
+#include <boost/log/utility/setup/file.hpp>
+#include <boost/log/utility/setup/common_attributes.hpp>
+#include <boost/log/sinks/sync_frontend.hpp>
+#include <boost/log/sinks/text_ostream_backend.hpp>
+#include <boost/program_options.hpp>
+
+namespace logging = boost::log;
+namespace src = boost::log::sources;
+namespace expr = boost::log::expressions;
+namespace sinks = boost::log::sinks;
+namespace keywords = boost::log::keywords;
+namespace po = boost::program_options;
 
 using boost::asio::ip::tcp;
 using namespace std;
@@ -69,11 +84,11 @@ riorita::Bytes processRequest(const string& remoteAddr, const riorita::Request& 
         verdict = true;
     }
 
-    cout << "Processed " << riorita::toChars(request.type)
+    BOOST_LOG_TRIVIAL(info)
+         << "Processed " << riorita::toChars(request.type)
          << " in " << (currentTimeMillis() - startTimeMillis) << " ms,"
          << " returns " << success << ", " << verdict << ", " << data.length()
-         << " [" << remoteAddr << ", id=" << request.id << "]"
-         << endl;
+         << " [" << remoteAddr << ", id=" << request.id << "]";
 
     return newResponse(request, success, verdict,
             static_cast<riorita::int32>(data.length()),
@@ -85,7 +100,7 @@ class Session: public boost::enable_shared_from_this<Session>
 public:
     virtual ~Session()
     {
-        cout << "Connection closed " << remoteAddr << endl;
+        BOOST_LOG_TRIVIAL(info) << "Connection closed " << remoteAddr;
 
         response.reset();
         requestBytes.reset();
@@ -101,7 +116,7 @@ public:
 
     void onError()
     {
-        cout << "Ready to close " << remoteAddr << endl;
+        BOOST_LOG_TRIVIAL(info) << "Ready to close " << remoteAddr;
         sessions.erase(shared_from_this());
     }
 
@@ -113,7 +128,7 @@ public:
     void start()
     {
         remoteAddr = boost::lexical_cast<std::string>(_socket.remote_endpoint());
-        cout << "New connection " << remoteAddr << endl;
+        BOOST_LOG_TRIVIAL(info) << "New connection " << remoteAddr;
         sessions.insert(shared_from_this());
         boost::system::error_code error;
         handleStart(error);    
@@ -132,7 +147,7 @@ public:
         }
         else
         {
-            cout << "error handleStart: " << remoteAddr << endl;
+            BOOST_LOG_TRIVIAL(info) << "error handleStart: " << remoteAddr;
             onError();
         }
     }
@@ -155,11 +170,12 @@ public:
         }
         else
         {
-            cout << "error handleRead: " << remoteAddr << ":"
+            BOOST_LOG_TRIVIAL(info)
+                << "error handleRead: " << remoteAddr << ":"
                 << " error=" << error
-                << " bytes_transferred=" << bytes_transferred
-                << endl;
+                << " bytes_transferred=" << bytes_transferred;
             ;
+            
             onError();
         }
     }
@@ -184,7 +200,8 @@ public:
             }
             else
             {
-                cout << "Can't parse request: " << remoteAddr << endl;
+                BOOST_LOG_TRIVIAL(info) << "Can't parse request: " << remoteAddr;
+                
                 onError();
             }
 
@@ -196,7 +213,7 @@ public:
         }
         else
         {
-            cout << "error handleRequest: " << remoteAddr << endl;
+            BOOST_LOG_TRIVIAL(info) << "error handleRequest: " << remoteAddr;
             onError();
         }
     }
@@ -214,7 +231,7 @@ public:
         }
         else
         {
-            cout << "error handleEnd: " << remoteAddr << endl;
+            BOOST_LOG_TRIVIAL(info) << "error handleEnd: " << remoteAddr;
             onError();
         }
     }
@@ -271,48 +288,106 @@ typedef std::list<RioritaServerPtr> RioritaServerList;
 
 //----------------------------------------------------------------------
 
-void init()
+void init(const string& logsDir, riorita::StorageType storageType)
 {
     riorita::StorageOptions opts;
     opts.directory = "data";
 
-    storage = riorita::newStorage(riorita::MEMORY, opts);
+    boost::filesystem::path logsPath(logsDir);
+    logsPath /= "riorita_%N.log";
+
+    storage = riorita::newStorage(storageType, opts);
     if (null == storage)
     {
         std::cerr << "Can't initialize storage\n";
         exit(1);
     }
+
+    logging::add_common_attributes();
+
+    logging::add_file_log
+    (
+        keywords::open_mode = std::ios::app,
+        keywords::file_name = logsPath.string(),
+        keywords::rotation_size = 32 * 1024 * 1024,
+        keywords::time_based_rotation = sinks::file::rotation_at_time_point(0, 0, 0),
+        keywords::format = "%Severity%: [%TimeStamp%]: %Message%"
+    );
+
+    logging::core::get()->set_filter
+    (
+        logging::trivial::severity >= logging::trivial::info
+    );
 }
 
 int main(int argc, char* argv[])
 {
-    init();
-
-    try
+    int port;
+    
     {
-        if (argc < 2)
+        po::options_description description("=== riorita ===\nOptions");
+
+        string logsDir;
+        string backend;
+
+        description.add_options()
+            ("help", "Help message")
+            ("logsDir", po::value<string>(&logsDir)->default_value("."), "Directory for logs")
+            ("backend", po::value<string>(&backend)->default_value("leveldb"), "Backend: leveldb, files or memory")
+            ("port", po::value<int>(&port)->default_value(8024), "Port")
+        ;
+
+        po::variables_map varmap;
+        po::store(po::parse_command_line(argc, argv, description), varmap);
+        po::notify(varmap);
+        
+        if (varmap.count("help"))
         {
-            std::cerr << "Usage: riorita_server <port> [<port> ...]\n";
+            std::cout << description << std::endl;
             return 1;
         }
 
+        riorita::StorageType type = riorita::getType(backend);
+        if (type == riorita::ILLEGAL_STORAGE_TYPE)
+        {
+            std::cout << description << std::endl;
+            return 1;
+        }
+
+        init(logsDir, type);
+    }
+
+    BOOST_LOG_TRIVIAL(info) << "Starting riorita server";
+
+    try
+    {
         boost::asio::io_service io_service;
 
         RioritaServerList servers;
-        for (int i = 1; i < argc; ++i)
         {
-            tcp::endpoint endpoint(tcp::v4(), short(atoi(argv[i])));
+            BOOST_LOG_TRIVIAL(error) << "Listen port " << port;
+            tcp::endpoint endpoint(tcp::v4(), short(port));
             RioritaServerPtr server(new RioritaServer(io_service, endpoint));
             servers.push_back(server);
         }
 
+        BOOST_LOG_TRIVIAL(info) << "Started riorita server";
+    
         io_service.run();
     }
     catch (std::exception& e)
     {
+        BOOST_LOG_TRIVIAL(error) << "Exception: " << e.what();
         std::cerr << "Exception: " << e.what() << "\n";
         return 1;
     }
+    catch(...)
+    {
+        BOOST_LOG_TRIVIAL(error) << "Unexpected exception";
+        std::cerr << "Unexpected exception\n";
+        return 1;
+    }
 
+    BOOST_LOG_TRIVIAL(info) << "Exited riorita server [exitCode=0]";
     return 0;
 }

@@ -20,12 +20,15 @@ struct Storage
 
 enum StorageType
 {
+    ILLEGAL_STORAGE_TYPE,
     MEMORY,
     FILES,
     LEVELDB
 };
 
 Storage* newStorage(StorageType type, const StorageOptions& options);
+
+StorageType getType(const std::string& typeName);
 
 }
 

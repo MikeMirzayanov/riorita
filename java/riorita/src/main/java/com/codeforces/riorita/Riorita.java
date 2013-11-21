@@ -1,5 +1,7 @@
 package com.codeforces.riorita;
 
+import org.apache.log4j.Logger;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -12,11 +14,15 @@ import java.nio.ByteOrder;
 import java.util.Random;
 
 public class Riorita {
+    private static final Logger logger = Logger.getLogger(Riorita.class);
+
     private static final byte MAGIC_BYTE = 113;
     private static final byte PROTOCOL_VERSION = 1;
     private static final int MAX_RECONNECT_COUNT = 10;
-
     private static final long WARN_THRESHOLD_MILLIS = 100;
+
+    private static final int RECEIVE_BUFFER_SIZE = 1048576;
+    private static final int SEND_BUFFER_SIZE = 1048576;
 
     private final Random random = new Random(Riorita.class.hashCode() ^ this.hashCode());
 
@@ -39,6 +45,7 @@ public class Riorita {
     private void reconnectQuietly() {
         if (socket != null) {
             try {
+                logger.info("Closing socket.");
                 socket.close();
             } catch (IOException e) {
                 // No operations.
@@ -47,10 +54,15 @@ public class Riorita {
 
         try {
             socket = new Socket();
+            socket.setReceiveBufferSize(RECEIVE_BUFFER_SIZE);
+            socket.setSendBufferSize(SEND_BUFFER_SIZE);
+
             socket.connect(socketAddress);
 
             inputStream = socket.getInputStream();
             outputStream = socket.getOutputStream();
+
+            logger.info("Connected to " + socketAddress + ".");
         } catch (IOException ignored) {
             // No operations.
         }
@@ -82,6 +94,7 @@ public class Riorita {
 
                 while (iteration < MAX_RECONNECT_COUNT) {
                     if (socket == null || !socket.isConnected() || socket.isClosed()) {
+                        logger.warn("socket == null || !socket.isConnected() || socket.isClosed()");
                         reconnectQuietly();
                     }
 
@@ -91,7 +104,7 @@ public class Riorita {
                         try {
                             return operation.run();
                         } catch (IOException e) {
-                            System.out.println(e);
+                            logger.warn("Can't process operation.", e);
                             exception = e;
                             try {
                                 Thread.sleep(iteration * 100);
@@ -115,7 +128,9 @@ public class Riorita {
             long duration = System.currentTimeMillis() - startTimeMills;
 
             if (duration > WARN_THRESHOLD_MILLIS) {
-                System.err.println("WARN: Too long operation " + operation.getType() + " [takes " + duration + " ms.]");
+                logger.warn("Operation " + operation.getType() + " takes " + duration + " ms, id=" + operation.getRequestId() + ".");
+            } else {
+                logger.info("Operation " + operation.getType() + " takes " + duration + " ms, id=" + operation.getRequestId() + ".");
             }
         }
     }
@@ -225,6 +240,11 @@ public class Riorita {
             public Type getType() {
                 return Type.PING;
             }
+
+            @Override
+            public long getRequestId() {
+                return requestId;
+            }
         });
     }
 
@@ -252,6 +272,11 @@ public class Riorita {
             public Type getType() {
                 return Type.HAS;
             }
+
+            @Override
+            public long getRequestId() {
+                return requestId;
+            }
         });
     }
 
@@ -278,6 +303,11 @@ public class Riorita {
             @Override
             public Type getType() {
                 return Type.DELETE;
+            }
+
+            @Override
+            public long getRequestId() {
+                return requestId;
             }
         });
     }
@@ -308,6 +338,11 @@ public class Riorita {
             public Type getType() {
                 return Type.PUT;
             }
+
+            @Override
+            public long getRequestId() {
+                return requestId;
+            }
         });
     }
 
@@ -325,7 +360,7 @@ public class Riorita {
 
                 int responseLength = readResponseLength(requestId);
                 if (responseLength < 16) {
-                    throw new IOException("Expected at least 16 bytes in response [requestId=" + requestId + "].");
+                    throw new IOException("Expected at least 16 bytes in response, but " + responseLength + " found [requestId=" + requestId + "].");
                 }
 
                 boolean verdict = readResponseVerdict(requestId);
@@ -355,6 +390,11 @@ public class Riorita {
             public Type getType() {
                 return Type.GET;
             }
+
+            @Override
+            public long getRequestId() {
+                return requestId;
+            }
         });
     }
 
@@ -373,5 +413,6 @@ public class Riorita {
     private interface Operation<T> {
         T run() throws IOException;
         Type getType();
+        long getRequestId();
     }
 }

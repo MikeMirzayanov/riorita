@@ -118,7 +118,7 @@ public class RioritaBenchmark {
     }
 
     public static void main(String[] args) throws IOException {
-        Riorita riorita = new Riorita("localhost", 8100);
+        Riorita riorita = new Riorita("localhost", 8024);
 
         if (args[0].startsWith("val")) {
             long total = Long.parseLong(args[1]);

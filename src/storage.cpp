@@ -18,6 +18,20 @@ using namespace std;
 
 namespace riorita {
 
+StorageType getType(const string& typeName)
+{
+    if (typeName == "memory" || typeName == "MEMORY")
+        return MEMORY;
+
+    if (typeName == "files" || typeName == "FILES")
+        return FILES;
+
+    if (typeName == "leveldb" || typeName == "LEVELDB")
+        return LEVELDB;
+
+    return ILLEGAL_STORAGE_TYPE;
+}
+
 struct MemoryStorage: public Storage
 {
     MemoryStorage(const StorageOptions& options)
