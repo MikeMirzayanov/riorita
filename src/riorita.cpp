@@ -281,12 +281,12 @@ typedef std::list<RioritaServerPtr> RioritaServerList;
 
 //----------------------------------------------------------------------
 
-void init(const string& logFile, riorita::StorageType storageType)
+void init(const string& logFile, const string& dataDir, riorita::StorageType storageType)
 {
     lout = boost::shared_ptr<riorita::Logger>(new riorita::Logger(logFile));
 
     riorita::StorageOptions opts;
-    opts.directory = "data";
+    opts.directory = dataDir;
 
     storage = boost::shared_ptr<riorita::Storage>(riorita::newStorage(storageType, opts));
     if (null == storage)
@@ -304,11 +304,13 @@ int main(int argc, char* argv[])
         po::options_description description("=== riorita ===\nOptions");
 
         string logFile;
+        string dataDir;
         string backend;
 
         description.add_options()
             ("help", "Help message")
             ("log", po::value<string>(&logFile)->default_value("riorita.log"), "Log file")
+            ("data", po::value<string>(&dataDir)->default_value("data"), "Data directory")
             ("backend", po::value<string>(&backend)->default_value("leveldb"), "Backend: leveldb, files or memory")
             ("port", po::value<int>(&port)->default_value(8024), "Port")
         ;
@@ -330,7 +332,7 @@ int main(int argc, char* argv[])
             return 1;
         }
 
-        init(logFile, type);
+        init(logFile, dataDir, type);
     }
 
     *lout << "Starting riorita server" << endl;
