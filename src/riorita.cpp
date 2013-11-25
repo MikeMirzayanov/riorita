@@ -1,5 +1,6 @@
 #include "protocol.h"
 #include "storage.h"
+#include "logger.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -17,21 +18,8 @@
 #include <boost/enable_shared_from_this.hpp>
 #include <boost/asio.hpp>
 #include <boost/filesystem.hpp>
-#include <boost/log/trivial.hpp>
-#include <boost/log/expressions.hpp>
-#include <boost/log/sources/severity_logger.hpp>
-#include <boost/log/sources/record_ostream.hpp>
-#include <boost/log/utility/setup/file.hpp>
-#include <boost/log/utility/setup/common_attributes.hpp>
-#include <boost/log/sinks/sync_frontend.hpp>
-#include <boost/log/sinks/text_ostream_backend.hpp>
 #include <boost/program_options.hpp>
 
-namespace logging = boost::log;
-namespace src = boost::log::sources;
-namespace expr = boost::log::expressions;
-namespace sinks = boost::log::sinks;
-namespace keywords = boost::log::keywords;
 namespace po = boost::program_options;
 
 using boost::asio::ip::tcp;
@@ -44,7 +32,8 @@ class Session;
 typedef boost::shared_ptr<Session> SessionPtr;
 set<SessionPtr> sessions;
 
-riorita::Storage* storage;
+boost::shared_ptr<riorita::Logger> lout;
+boost::shared_ptr<riorita::Storage> storage;
 
 long long currentTimeMillis()
 {
@@ -84,11 +73,14 @@ riorita::Bytes processRequest(const string& remoteAddr, const riorita::Request& 
         verdict = true;
     }
 
-    BOOST_LOG_TRIVIAL(info)
+    int size = max(int(data.length()), int(request.value.size));
+
+    *lout
          << "Processed " << riorita::toChars(request.type)
          << " in " << (currentTimeMillis() - startTimeMillis) << " ms,"
-         << " returns " << success << ", " << verdict << ", " << data.length()
-         << " [" << remoteAddr << ", id=" << request.id << "]";
+         << " returns success=" << success << ", verdict=" << verdict << ", size=" << size
+         << " [" << remoteAddr << ", id=" << request.id << "]"
+         << endl;
 
     return newResponse(request, success, verdict,
             static_cast<riorita::int32>(data.length()),
@@ -100,7 +92,7 @@ class Session: public boost::enable_shared_from_this<Session>
 public:
     virtual ~Session()
     {
-        BOOST_LOG_TRIVIAL(info) << "Connection closed " << remoteAddr;
+        *lout << "Connection closed " << remoteAddr << endl;
 
         response.reset();
         requestBytes.reset();
@@ -116,7 +108,7 @@ public:
 
     void onError()
     {
-        BOOST_LOG_TRIVIAL(info) << "Ready to close " << remoteAddr;
+        *lout << "Ready to close " << remoteAddr << endl;
         sessions.erase(shared_from_this());
     }
 
@@ -128,7 +120,7 @@ public:
     void start()
     {
         remoteAddr = boost::lexical_cast<std::string>(_socket.remote_endpoint());
-        BOOST_LOG_TRIVIAL(info) << "New connection " << remoteAddr;
+        *lout << "New connection " << remoteAddr << endl;
         sessions.insert(shared_from_this());
         boost::system::error_code error;
         handleStart(error);    
@@ -147,7 +139,7 @@ public:
         }
         else
         {
-            BOOST_LOG_TRIVIAL(info) << "error handleStart: " << remoteAddr;
+            *lout << "error handleStart: " << remoteAddr << endl;
             onError();
         }
     }
@@ -170,10 +162,11 @@ public:
         }
         else
         {
-            BOOST_LOG_TRIVIAL(info)
+            *lout
                 << "error handleRead: " << remoteAddr << ":"
                 << " error=" << error
-                << " bytes_transferred=" << bytes_transferred;
+                << " bytes_transferred=" << bytes_transferred
+                << endl;
             ;
             
             onError();
@@ -200,7 +193,7 @@ public:
             }
             else
             {
-                BOOST_LOG_TRIVIAL(info) << "Can't parse request: " << remoteAddr;
+                *lout << "Can't parse request: " << remoteAddr << endl;
                 
                 onError();
             }
@@ -213,7 +206,7 @@ public:
         }
         else
         {
-            BOOST_LOG_TRIVIAL(info) << "error handleRequest: " << remoteAddr;
+            *lout << "error handleRequest: " << remoteAddr << endl;
             onError();
         }
     }
@@ -231,7 +224,7 @@ public:
         }
         else
         {
-            BOOST_LOG_TRIVIAL(info) << "error handleEnd: " << remoteAddr;
+            *lout << "error handleEnd: " << remoteAddr << endl;
             onError();
         }
     }
@@ -288,36 +281,19 @@ typedef std::list<RioritaServerPtr> RioritaServerList;
 
 //----------------------------------------------------------------------
 
-void init(const string& logsDir, riorita::StorageType storageType)
+void init(const string& logFile, riorita::StorageType storageType)
 {
+    lout = boost::shared_ptr<riorita::Logger>(new riorita::Logger(logFile));
+
     riorita::StorageOptions opts;
     opts.directory = "data";
 
-    boost::filesystem::path logsPath(logsDir);
-    logsPath /= "riorita_%N.log";
-
-    storage = riorita::newStorage(storageType, opts);
+    storage = boost::shared_ptr<riorita::Storage>(riorita::newStorage(storageType, opts));
     if (null == storage)
     {
         std::cerr << "Can't initialize storage\n";
         exit(1);
     }
-
-    logging::add_common_attributes();
-
-    logging::add_file_log
-    (
-        keywords::open_mode = std::ios::app,
-        keywords::file_name = logsPath.string(),
-        keywords::rotation_size = 32 * 1024 * 1024,
-        keywords::time_based_rotation = sinks::file::rotation_at_time_point(0, 0, 0),
-        keywords::format = "%Severity%: [%TimeStamp%]: %Message%"
-    );
-
-    logging::core::get()->set_filter
-    (
-        logging::trivial::severity >= logging::trivial::info
-    );
 }
 
 int main(int argc, char* argv[])
@@ -327,12 +303,12 @@ int main(int argc, char* argv[])
     {
         po::options_description description("=== riorita ===\nOptions");
 
-        string logsDir;
+        string logFile;
         string backend;
 
         description.add_options()
             ("help", "Help message")
-            ("logsDir", po::value<string>(&logsDir)->default_value("."), "Directory for logs")
+            ("log", po::value<string>(&logFile)->default_value("riorita.log"), "Log file")
             ("backend", po::value<string>(&backend)->default_value("leveldb"), "Backend: leveldb, files or memory")
             ("port", po::value<int>(&port)->default_value(8024), "Port")
         ;
@@ -354,10 +330,10 @@ int main(int argc, char* argv[])
             return 1;
         }
 
-        init(logsDir, type);
+        init(logFile, type);
     }
 
-    BOOST_LOG_TRIVIAL(info) << "Starting riorita server";
+    *lout << "Starting riorita server" << endl;
 
     try
     {
@@ -365,29 +341,29 @@ int main(int argc, char* argv[])
 
         RioritaServerList servers;
         {
-            BOOST_LOG_TRIVIAL(error) << "Listen port " << port;
+            *lout << "Listen port " << port << endl;
             tcp::endpoint endpoint(tcp::v4(), short(port));
             RioritaServerPtr server(new RioritaServer(io_service, endpoint));
             servers.push_back(server);
         }
 
-        BOOST_LOG_TRIVIAL(info) << "Started riorita server";
+        *lout << "Started riorita server" << endl;
     
         io_service.run();
     }
     catch (std::exception& e)
     {
-        BOOST_LOG_TRIVIAL(error) << "Exception: " << e.what();
-        std::cerr << "Exception: " << e.what() << "\n";
+        *lout << "Exception: " << e.what() << endl;
+        std::cerr << "Exception: " << e.what() << endl;
         return 1;
     }
     catch(...)
     {
-        BOOST_LOG_TRIVIAL(error) << "Unexpected exception";
-        std::cerr << "Unexpected exception\n";
+        *lout << "Unexpected exception" << endl;
+        std::cerr << "Unexpected exception" << endl;
         return 1;
     }
 
-    BOOST_LOG_TRIVIAL(info) << "Exited riorita server [exitCode=0]";
+    *lout << "Exited riorita server [exitCode=0]" << endl;
     return 0;
 }
