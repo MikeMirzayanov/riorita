@@ -9,15 +9,15 @@ using namespace std;
 
 const string INDEX_FILE = "FileSystemCompactStorage.index";
 const string DATA_FILE_PATTERN = "FileSystemCompactStorage.%04d";
-const size_t BLOCK_SIZE = 1024 * 1024;
-const size_t DATA_FILE_SIZE = 1024 * 1024 * 1024;
-const size_t MAX_DATA_FILE_NAME_LENGTH = 64;
+const int BLOCK_SIZE = 1024 * 1024;
+const int DATA_FILE_SIZE = 1024 * 1024 * 1024;
+const int MAX_DATA_FILE_NAME_LENGTH = 64;
 
-static size_t fingerprint(const char* c, size_t size)
+static int fingerprint(const char* c, int size)
 {
-    size_t result = 0;
-    for (size_t i = 0; i < size; i++)
-        result = result * 97 + size_t(int(c[i]) + 255);
+    int result = 0;
+    for (int i = 0; i < size; i++)
+        result = result * 97 + int(int(c[i]) + 255);
     return result;
 }
 
@@ -71,11 +71,11 @@ bool FileSystemCompactStorage::get(const string& name, string& data)
         {
             if (0 == fseek(f, position.offset, SEEK_SET))
             {
-                char* bytes = new char[position.length + sizeof(size_t)];
-                if (position.length + sizeof(size_t) == fread(bytes, 1, position.length + sizeof(size_t), f))
+                char* bytes = new char[position.length + sizeof(int)];
+                if (position.length + sizeof(int) == fread(bytes, 1, position.length + sizeof(int), f))
                 {
-                    size_t fp;
-                    memcpy(&fp, bytes + position.length, sizeof(size_t));
+                    int fp;
+                    memcpy(&fp, bytes + position.length, sizeof(int));
                     result = (position.fingerprint == fingerprint(bytes, position.length)
                         && position.fingerprint == fp);
                     if (result)
@@ -99,7 +99,7 @@ void FileSystemCompactStorage::prepareDataFile(int index)
         fclose(f);
 }
 
-void FileSystemCompactStorage::put(size_t index, const string& data, size_t fp)
+void FileSystemCompactStorage::put(int index, const string& data, int fp)
 {
     char fileName[MAX_DATA_FILE_NAME_LENGTH];
     sprintf(fileName, DATA_FILE_PATTERN.c_str(), index);
@@ -108,31 +108,30 @@ void FileSystemCompactStorage::put(size_t index, const string& data, size_t fp)
     if (0 != f)
     {
         fwrite(data.c_str(), 1, data.length(), f);
-        fwrite(&fp, 1, sizeof(size_t), f);
+        fwrite(&fp, 1, sizeof(int), f);
         fclose(f);
     }
 }
 
 void FileSystemCompactStorage::put(const string& name, const string& data)
 {
-    if (offset + data.length() + sizeof(size_t) >= DATA_FILE_SIZE)
+    if (offset + int(data.length() + sizeof(int)) >= DATA_FILE_SIZE)
     {
         index++;
         offset = 0;
         prepareDataFile(index);
     }
 
-    size_t fp = fingerprint(data.c_str(), data.length());
+    int fp = fingerprint(data.c_str(), data.length());
     
     put(index, data, fp);
     
-    Position position = {index, offset, data.length(),
-        fp};
+    Position position = {index, offset, int(data.length()), fp};
     
     positionByName[name] = position;
     appendNameAndPosition(name, position);
 
-    offset += data.length() + sizeof(size_t);
+    offset += data.length() + sizeof(int);
 }
 
 void FileSystemCompactStorage::appendNameAndPosition(const string& name, const Position& position)
@@ -141,7 +140,7 @@ void FileSystemCompactStorage::appendNameAndPosition(const string& name, const P
     FILE* indexFilePtr = fopen(indexFile.c_str(), "a+b");
     if (0 != indexFilePtr)
     {
-        size_t size = sizeof(int) + name.length() + sizeof(Position);
+        int size = sizeof(int) + name.length() + sizeof(Position);
         char* data = new char[size];
         int length = name.length();
         memcpy(data, &length, sizeof(int));
@@ -168,7 +167,7 @@ void FileSystemCompactStorage::readIndexFile()
         
         while (true)
         {
-            size_t read = fread(block, 1, BLOCK_SIZE, indexFilePtr);
+            int read = fread(block, 1, BLOCK_SIZE, indexFilePtr);
             
             if (read > 0)
                 indexData.append(block, read);
@@ -185,8 +184,8 @@ void FileSystemCompactStorage::readIndexFile()
 
     assert(sizeof(Position) == 16);
 
-    size_t pos = 0;
-    while (pos < indexData.length() && !hasError && hasEof)
+    int pos = 0;
+    while (pos < int(indexData.length()) && !hasError && hasEof)
     {
         int nameLength;
         memcpy(&nameLength, indexData.c_str() + pos, sizeof(int));
@@ -220,7 +219,7 @@ string key(int num)
 {
     srand(num);
     string c(12, '0');
-    for (size_t i = 0; i < c.length(); i++)
+    for (int i = 0; i < c.length(); i++)
         c[i] = char('0' + rand() % 10);
     return c;
 }
@@ -229,7 +228,7 @@ string value(int num)
 {
     srand(num);
     string c(500000, '0');
-    for (size_t i = 0; i < c.length(); i++)
+    for (int i = 0; i < c.length(); i++)
         c[i] = char('0' + rand() % 10);
     return c;
 }

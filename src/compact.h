@@ -9,10 +9,10 @@ namespace riorita {
 
 struct Position
 {
-    std::size_t index;
-    std::size_t offset;
-    std::size_t length;
-    std::size_t fingerprint;
+    int index;
+    int offset;
+    int length;
+    int fingerprint;
 };
 
 class FileSystemCompactStorage
@@ -28,12 +28,12 @@ private:
     void readIndexFile();
     void appendNameAndPosition(const std::string& name, const Position& position);
     void prepareDataFile(int index);
-    void put(std::size_t index, const std::string& data, std::size_t fp);
+    void put(int index, const std::string& data, int fp);
 
     std::string dir;
     std::map<std::string, Position> positionByName;
-    size_t index;
-    size_t offset;
+    int index;
+    int offset;
 };
 
 }
