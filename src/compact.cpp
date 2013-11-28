@@ -180,35 +180,35 @@ void FileSystemCompactStorage::readIndexFile()
                 break;
             }
         }
-    }
+        
+        assert(sizeof(Position) == 16);
 
-    assert(sizeof(Position) == 16);
-
-    int pos = 0;
-    while (pos < int(indexData.length()) && !hasError && hasEof)
-    {
-        int nameLength;
-        memcpy(&nameLength, indexData.c_str() + pos, sizeof(int));
-        pos += sizeof(int);
-        string name(indexData.c_str() + pos, nameLength);
-        pos += nameLength;
-        Position position;
-        memcpy(&position, indexData.c_str() + pos, sizeof(Position));
-        pos += sizeof(Position);
-
-        positionByName[name] = position;
-
-        if (position.index > index)
+        int pos = 0;
+        while (pos < int(indexData.length()) && !hasError && hasEof)
         {
-            index = position.index;
-            offset = position.offset + position.length;
+            int nameLength;
+            memcpy(&nameLength, indexData.c_str() + pos, sizeof(int));
+            pos += sizeof(int);
+            string name(indexData.c_str() + pos, nameLength);
+            pos += nameLength;
+            Position position;
+            memcpy(&position, indexData.c_str() + pos, sizeof(Position));
+            pos += sizeof(Position);
+
+            positionByName[name] = position;
+
+            if (position.index > index)
+            {
+                index = position.index;
+                offset = position.offset + position.length;
+            }
+
+            if (position.index == index)
+                offset = max(offset, position.offset + position.length);
         }
 
-        if (position.index == index)
-            offset = max(offset, position.offset + position.length);
+        fclose(indexFilePtr);
     }
-
-    fclose(indexFilePtr);
 }
 
 /*
