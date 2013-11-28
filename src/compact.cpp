@@ -43,11 +43,15 @@ static bool isErased(const Position& position)
 
 bool FileSystemCompactStorage::has(const string& name)
 {
+    boost::unique_lock<boost::mutex> scoped_lock(mutex);
+    
     return positionByName.count(name) && !isErased(positionByName[name]);
 }
 
 void FileSystemCompactStorage::erase(const string& name)
 {
+    boost::unique_lock<boost::mutex> scoped_lock(mutex);
+    
     if (has(name))
     {
         Position position = {0, 0, 0, 1};
@@ -58,6 +62,8 @@ void FileSystemCompactStorage::erase(const string& name)
 
 bool FileSystemCompactStorage::get(const string& name, string& data)
 {
+    boost::unique_lock<boost::mutex> scoped_lock(mutex);
+
     data.clear();
     bool result = false;
 
@@ -115,6 +121,8 @@ void FileSystemCompactStorage::put(int index, const string& data, int fp)
 
 void FileSystemCompactStorage::put(const string& name, const string& data)
 {
+    boost::unique_lock<boost::mutex> scoped_lock(mutex);
+
     if (offset + int(data.length() + sizeof(int)) >= DATA_FILE_SIZE)
     {
         index++;
@@ -124,10 +132,8 @@ void FileSystemCompactStorage::put(const string& name, const string& data)
 
     int fp = fingerprint(data.c_str(), data.length());
     
-    put(index, data, fp);
-    
     Position position = {index, offset, int(data.length()), fp};
-    
+    put(index, data, fp);
     positionByName[name] = position;
     appendNameAndPosition(name, position);
 
@@ -209,67 +215,4 @@ void FileSystemCompactStorage::readIndexFile()
 
         fclose(indexFilePtr);
     }
-}
-
-/*
-
-#define forn(i, n) for (int i = 0; i < int(n); i++)
-
-string key(int num)
-{
-    srand(num);
-    string c(12, '0');
-    for (int i = 0; i < c.length(); i++)
-        c[i] = char('0' + rand() % 10);
-    return c;
-}
-
-string value(int num)
-{
-    srand(num);
-    string c(500000, '0');
-    for (int i = 0; i < c.length(); i++)
-        c[i] = char('0' + rand() % 10);
-    return c;
-}
-
-#include <ctime>
-#include <vector>
-#include <iostream>
-
-int main(int argc, char* argv[])
-{
-    int t;
-    scanf("%d", &t);
-
-    FileSystemCompactStorage s(".");
-
-    int tt = clock();
-
-    vector<string> keys(100);
-    forn(i, keys.size())
-        keys[i] = key(i);
-
-    if (t == 5)
-    {
-        forn(i, keys.size())
-            s.put(keys[i], value(i));
-    }
-
-    if (t == 6)
-    {
-        srand(16);
-        forn(i, keys.size())
-        {
-            int j = rand() % keys.size();
-            string v;
-            assert(s.get(keys[j], v));
-            assert(v == value(j));
-        }
-    }
-
-    cout << (clock() - tt) * 1000.0 / CLOCKS_PER_SEC << endl;
-
-    return 0;
-}
-*/
+}   
