@@ -311,7 +311,7 @@ int main(int argc, char* argv[])
             ("help", "Help message")
             ("log", po::value<string>(&logFile)->default_value("riorita.log"), "Log file")
             ("data", po::value<string>(&dataDir)->default_value("data"), "Data directory")
-            ("backend", po::value<string>(&backend)->default_value("leveldb"), "Backend: leveldb, files or memory")
+            ("backend", po::value<string>(&backend)->default_value("leveldb"), "Backend: leveldb, files, compact or memory")
             ("port", po::value<int>(&port)->default_value(8024), "Port")
         ;
 

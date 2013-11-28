@@ -23,7 +23,8 @@ enum StorageType
     ILLEGAL_STORAGE_TYPE,
     MEMORY,
     FILES,
-    LEVELDB
+    LEVELDB,
+    COMPACT
 };
 
 Storage* newStorage(StorageType type, const StorageOptions& options);

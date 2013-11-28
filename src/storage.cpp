@@ -4,6 +4,8 @@
 #include <map>
 #include <cstdlib>
 #include <cstdio>
+#include "snappy.h"
+#include "compact.h"
 
 #include <boost/filesystem.hpp>
 
@@ -28,6 +30,9 @@ StorageType getType(const string& typeName)
 
     if (typeName == "leveldb" || typeName == "LEVELDB")
         return LEVELDB;
+
+    if (typeName == "compact" || typeName == "COMPACT")
+        return COMPACT;
 
     return ILLEGAL_STORAGE_TYPE;
 }
@@ -101,7 +106,7 @@ struct FilesStorage: public Storage
         }
 
         bytes[done] = 0;
-        value = bytes;
+        snappy::Uncompress(bytes, done, &value);
         delete[] bytes;
         fclose(f);
 
@@ -124,8 +129,11 @@ struct FilesStorage: public Storage
             boost::filesystem::create_directories(dirs);
         }
 
+        string compressed;
+        snappy::Compress(value.data(), value.size(), &compressed);
+
         FILE* f = fopen(fileName.c_str(), "wb");
-        fwrite(value.c_str(), 1, value.length(), f);
+        fwrite(compressed.c_str(), 1, compressed.length(), f);
         fclose(f);
     }
 
@@ -135,12 +143,59 @@ private:
     string getFileName(const string& key)
     {
         string path;
-        for (size_t i = 2; i <= 8; i+=2)
+        for (size_t i = 2; i <= 6; i+=2)
             if (key.size() >= i)
                 path += key.substr(i - 2, 2) + '/';
         return options.directory + '/' + path + key + ".bin";
     }
 };
+
+// ==============================================================================
+
+struct CompactStorage: public Storage
+{
+    CompactStorage(const StorageOptions& options)
+    {
+        boost::filesystem::create_directories(options.directory);
+        compact = new FileSystemCompactStorage(options.directory);
+    }
+
+    ~CompactStorage()
+    {
+        delete compact;
+    }
+
+    bool has(const string& key)
+    {
+        return compact->has(key);
+    }
+
+    bool get(const string& key, string& value)
+    {
+        string raw;
+        bool result = compact->get(key, raw);
+        if (result)
+            snappy::Uncompress(raw.data(), raw.size(), &value);
+        return result;
+    }
+
+    void erase(const string& key)
+    {
+        compact->erase(key);
+    }
+
+    void put(const string& key, const string& value)
+    {
+        string raw;
+        snappy::Compress(value.data(), value.size(), &raw);
+        compact->put(key, raw);
+    }
+
+private:
+    FileSystemCompactStorage* compact;
+};
+
+// ==============================================================================
 
 #ifdef HAS_LEVELDB
 
@@ -208,6 +263,9 @@ Storage* newStorage(StorageType type, const StorageOptions& options)
     if (type == LEVELDB)
         return new LevelDbStorage(options);
 #endif
+
+    if (type == COMPACT)
+        return new CompactStorage(options);
 
     return 0;
 }
