@@ -5,6 +5,9 @@
 #include <map>
 #include <cstdlib>
 
+#include <boost/thread/mutex.hpp>
+#include <boost/thread/thread.hpp>
+
 namespace riorita {
 
 struct Position
@@ -34,6 +37,7 @@ private:
     std::map<std::string, Position> positionByName;
     int index;
     int offset;
+    boost::mutex mutex;
 };
 
 }
