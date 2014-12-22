@@ -1,1 +1,1 @@
-java -Xmx4G -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+UseCompressedOops -XX:+DoEscapeAnalysis -XX:+AggressiveOpts -XX:+OptimizeStringConcat -XX:+UseCompressedStrings -XX:+UseStringCache -cp .:./target/*:./target/test-classes com.codeforces.riorita.RioritaBenchmark test 1000000000 1000
+java -Xmx4G -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+UseCompressedOops -XX:+DoEscapeAnalysis -XX:+AggressiveOpts -XX:+OptimizeStringConcat -XX:+UseCompressedStrings -XX:+UseStringCache -cp .:./target/*:./target/test-classes com.codeforces.riorita.RioritaBenchmark test 100000000 1000
