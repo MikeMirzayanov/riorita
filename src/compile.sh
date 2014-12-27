@@ -1,1 +1,1 @@
-g++ -DHAS_LEVELDB -O2 -o riorita riorita.cpp protocol.cpp compact.cpp storage.cpp -lboost_system -lboost_thread -lboost_filesystem -lboost_program_options -lpthread -lleveldb -lsnappy
+g++ -std=c++11 -DHAS_ROCKSDB -DHAS_LEVELDB -O2 -g -o riorita riorita.cpp protocol.cpp compact.cpp storage.cpp -lboost_system -lboost_thread -lboost_filesystem -lboost_program_options -lpthread -lleveldb -lsnappy -I../../rocksdb/include -L../../rocksdb -lrocksdb

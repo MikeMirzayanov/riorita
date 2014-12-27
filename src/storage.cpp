@@ -15,6 +15,10 @@
 #   include "leveldb/filter_policy.h"
 #endif
 
+#ifdef HAS_ROCKSDB
+#include <rocksdb/db.h>
+#endif
+
 using namespace riorita;
 using namespace std;
 
@@ -33,6 +37,9 @@ StorageType getType(const string& typeName)
 
     if (typeName == "compact" || typeName == "COMPACT")
         return COMPACT;
+
+    if (typeName == "rocksdb" || typeName == "ROCKSDB")
+        return LEVELDB;
 
     return ILLEGAL_STORAGE_TYPE;
 }
@@ -250,22 +257,73 @@ private:
 
 #endif
 
+#ifdef HAS_ROCKSDB
+struct RocksDBStorage: public Storage {
+
+   RocksDBStorage(const StorageOptions& options)
+    {
+        this->options.create_if_missing = true;
+        this->options.create_missing_column_families = true;
+	this->options.allow_mmap_reads = true;
+	this->options.allow_mmap_writes = true;
+        this->options.write_buffer_size = 64 * 1024 * 1024;
+        const auto status = rocksdb::DB::Open(this->options, options.directory, &db);
+        assert(status.ok());
+    }
+
+    bool has(const string& key)
+    {
+        std::string value;
+        const auto s = db->Get(rocksdb::ReadOptions(), key, &value);
+        return s.ok();
+    }
+
+    bool get(const string& key, string& value)
+    {
+        const auto s = db->Get(rocksdb::ReadOptions(), key, &value);
+        return s.ok();
+    }
+
+    void erase(const string& key)
+    {
+        db->Delete(rocksdb::WriteOptions(), key);
+    }
+
+    void put(const string& key, const string& value)
+    {
+        db->Put(rocksdb::WriteOptions(), key, value);
+    }
+
+   ~RocksDBStorage()
+    {
+        delete db;
+    }
+
+private:
+    rocksdb::DB* db;
+    rocksdb::Options options;
+};
+#endif
 
 Storage* newStorage(StorageType type, const StorageOptions& options)
 {
-    if (type == MEMORY)
+
+    switch (type) {
+      case MEMORY:
         return new MemoryStorage(options);
-
-    if (type == FILES)
+      case FILES:
         return new FilesStorage(options);
-
 #ifdef HAS_LEVELDB
-    if (type == LEVELDB)
+      case LEVELDB:
         return new LevelDbStorage(options);
 #endif
-
-    if (type == COMPACT)
+      case COMPACT:
         return new CompactStorage(options);
+#ifdef HAS_ROCKSDB
+      case ROCKSDB:
+        return new RocksDBStorage(options);
+#endif
+    }
 
     return 0;
 }

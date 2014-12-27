@@ -24,7 +24,8 @@ enum StorageType
     MEMORY,
     FILES,
     LEVELDB,
-    COMPACT
+    COMPACT,
+    ROCKSDB
 };
 
 Storage* newStorage(StorageType type, const StorageOptions& options);
