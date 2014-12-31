@@ -10,9 +10,44 @@
   <name>riorita</name>
   <url>http://maven.apache.org</url>
 
+  <description>Riorita Java client code.</description>
+
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
+
+    <developers>
+        <developer>
+            <id>MikeMirzayanov</id>
+            <name>Mike Mirzayanov</name>
+            <url>https://github.com/MikeMirzayanov</url>
+            <email>mirzayanovmr@gmail.com</email>
+            <roles>
+                <role>owner, author</role>
+            </roles>
+            <timezone>+3</timezone>
+            <properties/>
+        </developer>
+    </developers>
+
+    <issueManagement>
+        <url>https://github.com/MikeMirzayanov/riorita/issues</url>
+        <system>GitHub Issues</system>
+    </issueManagement>
+
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>http://www.opensource.org/licenses/mit-license.php</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <scm>
+        <url>https://github.com/MikeMirzayanov/riorita</url>
+        <connection>scm:git:git://github.com/MikeMirzayanov/riorita.git</connection>
+        <developerConnection>scm:git:git@github.com:MikeMirzayanov/riorita.git</developerConnection>
+    </scm>
 
   <build>
       <plugins>

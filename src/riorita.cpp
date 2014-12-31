@@ -296,6 +296,14 @@ void init(const string& logFile, const string& dataDir, riorita::StorageType sto
     }
 }
 
+#ifdef HAS_ROCKSDB
+    const string DEFAULT_BACKEND = "rocksdb";
+#elseif HAS_LEVELDB
+    const string DEFAULT_BACKEND = "leveldb";
+#else
+    const string DEFAULT_BACKEND = "compact";
+#endif
+
 int main(int argc, char* argv[])
 {
     int port;
@@ -311,7 +319,7 @@ int main(int argc, char* argv[])
             ("help", "Help message")
             ("log", po::value<string>(&logFile)->default_value("riorita.log"), "Log file")
             ("data", po::value<string>(&dataDir)->default_value("data"), "Data directory")
-            ("backend", po::value<string>(&backend)->default_value("rocksdb"), "Backend: leveldb, files, compact or memory")
+            ("backend", po::value<string>(&backend)->default_value(DEFAULT_BACKEND), "Backend: rocksdb, leveldb, files, compact or memory")
             ("port", po::value<int>(&port)->default_value(8024), "Port")
         ;
 

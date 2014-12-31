@@ -259,6 +259,7 @@ public class Riorita {
             @Override
             public Boolean run() throws IOException {
                 outputStream.write(hasBuffer.array());
+                outputStream.flush();
 
                 int responseLength = readResponseLength(requestId);
                 if (responseLength != 16) {
@@ -291,6 +292,7 @@ public class Riorita {
             @Override
             public Boolean run() throws IOException {
                 outputStream.write(deleteBuffer.array());
+                outputStream.flush();
 
                 int responseLength = readResponseLength(requestId);
                 if (responseLength != 16) {
@@ -325,6 +327,7 @@ public class Riorita {
             @Override
             public Boolean run() throws IOException {
                 outputStream.write(putBuffer.array());
+                outputStream.flush();
 
                 int responseLength = readResponseLength(requestId);
                 if (responseLength != 16) {
@@ -357,6 +360,7 @@ public class Riorita {
             @Override
             public byte[] run() throws IOException {
                 outputStream.write(getBuffer.array());
+                outputStream.flush();
 
                 int responseLength = readResponseLength(requestId);
                 if (responseLength < 16) {
