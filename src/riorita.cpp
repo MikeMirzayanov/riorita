@@ -151,7 +151,13 @@ public:
                 && requestBytes.size <= MAX_VALID_REQUEST_SIZE)
         {
             requestBytes.size -= sizeof(riorita::int32);
+
+            long long startTimeMillis = currentTimeMillis();
             requestBytes.data = new riorita::byte[requestBytes.size];
+            *lout
+                 << "New bytes in " << (currentTimeMillis() - startTimeMillis) << " ms"
+                 << ", size=" << requestBytes.size
+                 << endl;
 
             boost::asio::async_read(
                 _socket,
@@ -178,7 +184,15 @@ public:
         if (!error && riorita::int32(bytes_transferred) == requestBytes.size)
         {
             riorita::int32 parsedByteCount;
+
+            long long startTimeMillis = currentTimeMillis();
             request = parseRequest(requestBytes, 0, parsedByteCount);
+            *lout
+                 << "Parsed " << riorita::toChars(request->type)
+                 << " in " << (currentTimeMillis() - startTimeMillis) << " ms"
+                 << ", size=" << requestBytes.size
+                 << " [" << remoteAddr << ", id=" << request->id << "]"
+                 << endl;
 
             if (request != null && parsedByteCount == requestBytes.size)
             {

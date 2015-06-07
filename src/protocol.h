@@ -15,6 +15,7 @@ const byte PROTOCOL_VERSION = 1;
 
 #define null (0)
 
+#undef DELETE
 enum RequestType {
     PING = 1,
     HAS = 2,

@@ -23,7 +23,7 @@ static int fingerprint(const char* c, int size)
 
 static string concatPath(const string& dir, const string& child)
 {
-#if defined(_WIN32) || defined(WIN32)
+#if defined(_WIN32) || defined(WIN32) || defined(_WIN64) || defined(WIN64)
     return dir + "\\" + child;
 #else
     return dir + "/" + child;

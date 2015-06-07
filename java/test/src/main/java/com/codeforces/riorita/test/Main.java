@@ -1,4 +1,4 @@
-    package com.codeforces.riorita.test;
+package com.codeforces.riorita.test;
 
 import com.codeforces.riorita.Riorita;
 import org.apache.commons.codec.digest.DigestUtils;
