@@ -51,7 +51,7 @@ public class RioritaBenchmark {
             byte[] result = riorita.get(key);
             //noinspection DoubleNegation
             if ((result != null) != has) {
-                throw new RuntimeException("Invalid get (has).");
+                throw new RuntimeException("Invalid get (has): (result != null)=" + (result != null) + ", has=" + has + ".");
             }
 
             if (has) {
@@ -100,7 +100,7 @@ public class RioritaBenchmark {
             byte[] result = riorita.get(key);
             //noinspection DoubleNegation
             if ((result != null) != has) {
-                throw new RuntimeException("Invalid get (has).");
+                throw new RuntimeException("Invalid get (has): (result != null)=" + (result != null) + ", has=" + has + ".");
             }
 
             if (!has) {

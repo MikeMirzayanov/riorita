@@ -15,6 +15,7 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/bind.hpp>
 #include <boost/shared_ptr.hpp>
+#include <boost/thread/thread.hpp>
 #include <boost/enable_shared_from_this.hpp>
 #include <boost/asio.hpp>
 #include <boost/filesystem.hpp>
@@ -102,7 +103,7 @@ public:
     }
 
     Session(boost::asio::io_service& io_service)
-        : _socket(io_service), request(null)
+        : _strand(io_service), _socket(io_service), request(null)
     {
     }
 
@@ -133,8 +134,8 @@ public:
             boost::asio::async_read(
                 _socket,
                 boost::asio::buffer(&requestBytes.size, sizeof(requestBytes.size)),
-                boost::bind(&Session::handleRead, shared_from_this(), boost::asio::placeholders::error,
-                    boost::asio::placeholders::bytes_transferred)
+                _strand.wrap(boost::bind(&Session::handleRead, shared_from_this(), boost::asio::placeholders::error,
+                    boost::asio::placeholders::bytes_transferred))
             );
         }
         else
@@ -162,8 +163,8 @@ public:
             boost::asio::async_read(
                 _socket,
                 boost::asio::buffer(requestBytes.data, requestBytes.size),
-                boost::bind(&Session::handleRequest, shared_from_this(), boost::asio::placeholders::error,
-                    boost::asio::placeholders::bytes_transferred)
+                _strand.wrap(boost::bind(&Session::handleRequest, shared_from_this(), boost::asio::placeholders::error,
+                    boost::asio::placeholders::bytes_transferred))
             );
         }
         else
@@ -201,8 +202,8 @@ public:
                 boost::asio::async_write(
                     _socket,
                     boost::asio::buffer(response.data, response.size),
-                    boost::bind(&Session::handleEnd, shared_from_this(), boost::asio::placeholders::error,
-                    boost::asio::placeholders::bytes_transferred)
+                    _strand.wrap(boost::bind(&Session::handleEnd, shared_from_this(), boost::asio::placeholders::error,
+                    boost::asio::placeholders::bytes_transferred))
                 );
             }
             else
@@ -244,6 +245,7 @@ public:
     }
 
 private:
+    boost::asio::io_service::strand _strand;
     tcp::socket _socket;
 
     riorita::Bytes requestBytes;
@@ -255,32 +257,37 @@ private:
 
 //----------------------------------------------------------------------
 
+SessionPtr session;
+
 class RioritaServer
 {
 public:
     RioritaServer(boost::asio::io_service& io_service,
         const tcp::endpoint& endpoint)
         : io_service_(io_service),
-        acceptor_(io_service, endpoint)
+        acceptor_(io_service)
     {
+        acceptor_.open(endpoint.protocol());
+        acceptor_.set_option(boost::asio::ip::tcp::acceptor::reuse_address(true));
+        acceptor_.bind(endpoint);
+        acceptor_.listen();
+
         startAccept();
     }
 
     void startAccept()
     {
-        SessionPtr newSession(new Session(io_service_));
-        acceptor_.async_accept(newSession->socket(),
-            boost::bind(&RioritaServer::handleAccept, this, newSession,
+        *lout << "startAccept" << endl;
+        session.reset(new Session(io_service_));
+        acceptor_.async_accept(session->socket(),
+            boost::bind(&RioritaServer::handleAccept, this,
             boost::asio::placeholders::error));
     }
 
-    void handleAccept(SessionPtr Session,
-        const boost::system::error_code& error)
+    void handleAccept(const boost::system::error_code& error)
     {
         if (!error)
-        {
-            Session->start();
-        }
+            session->start();
 
         startAccept();
     }
@@ -305,18 +312,20 @@ void init(const string& logFile, const string& dataDir, riorita::StorageType sto
     storage = boost::shared_ptr<riorita::Storage>(riorita::newStorage(storageType, opts));
     if (null == storage)
     {
-        std::cerr << "Can't initialize storage\n";
+        std::cerr << "Can't initialize storage" << std::endl;
         exit(1);
     }
 }
 
 #ifdef HAS_ROCKSDB
     const string DEFAULT_BACKEND = "rocksdb";
-#elseif HAS_LEVELDB
+#elif HAS_LEVELDB
     const string DEFAULT_BACKEND = "leveldb";
 #else
     const string DEFAULT_BACKEND = "compact";
 #endif
+
+boost::asio::io_service io_service(4);
 
 int main(int argc, char* argv[])
 {
@@ -361,8 +370,6 @@ int main(int argc, char* argv[])
 
     try
     {
-        boost::asio::io_service io_service;
-
         RioritaServerList servers;
         {
             *lout << "Listen port " << port << endl;
@@ -371,9 +378,29 @@ int main(int argc, char* argv[])
             servers.push_back(server);
         }
 
+        boost::asio::signal_set signals_(io_service);
+        signals_.add(SIGINT);
+        signals_.add(SIGTERM);
+#if defined(SIGQUIT)
+        signals_.add(SIGQUIT);
+#endif // defined(SIGQUIT)
+        signals_.async_wait(boost::bind(&boost::asio::io_service::stop, &io_service));
+
+
         *lout << "Started riorita server" << endl;
     
-        io_service.run();
+        std::vector<boost::shared_ptr<boost::thread> > threads;
+        for (std::size_t i = 0; i < 4; ++i)
+        {
+          boost::shared_ptr<boost::thread> thread(new boost::thread(
+                boost::bind(&boost::asio::io_service::run, &io_service)));
+          threads.push_back(thread);
+        }
+
+        // io_service.run();
+        
+        for (std::size_t i = 0; i < threads.size(); ++i)
+          threads[i]->join();
     }
     catch (std::exception& e)
     {

@@ -164,7 +164,7 @@ struct CompactStorage: public Storage
     CompactStorage(const StorageOptions& options)
     {
         boost::filesystem::create_directories(options.directory);
-        compact = new FileSystemCompactStorage(options.directory);
+        compact = new FileSystemCompactStorage(options.directory, 8);
     }
 
     ~CompactStorage()
