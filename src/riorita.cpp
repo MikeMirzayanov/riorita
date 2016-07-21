@@ -36,9 +36,56 @@ set<SessionPtr> sessions;
 boost::shared_ptr<riorita::Logger> lout;
 boost::shared_ptr<riorita::Storage> storage;
 
-long long currentTimeMillis()
+static long long currentTimeMillis()
 {
     return (long long)(clock() / double(CLOCKS_PER_SEC) * 1000.0 + 0.5);
+}
+
+static uint32_t string_address_to_uint32_t(const std::string& ip, bool& error)
+{
+    error = true;
+    
+    int a, b, c, d;
+    uint32_t result = 0;
+ 
+    if (sscanf(ip.c_str(), "%d.%d.%d.%d", &a, &b, &c, &d) != 4)
+        return 0;
+
+    if (a < 0 || a >= 256 || b < 0 || b >= 256
+            || c < 0 || c >= 256 || d < 0 || d >= 256)
+        return 0;
+ 
+    result = a << 24;
+    result |= b << 16;
+    result |= c << 8;
+    result |= d;
+    
+    error = false;
+    return result;
+}
+
+static bool string_address_matches(const std::string& ip, std::string network)
+{
+    if (network.find("/") == string::npos)
+        network += "/32";
+
+    int pos = network.find("/");
+    int bits;
+    if (sscanf(network.substr(pos + 1).c_str(), "%d", &bits) != 1)
+        return false;
+    if (bits < 0 || bits > 32)
+        return false;
+    uint32_t network_mask = uint32_t(((1ULL << bits) - 1) << (32 - bits));
+
+    bool error;
+    uint32_t ip_addr = string_address_to_uint32_t(ip, error);
+    if (error)
+        return false;
+    uint32_t network_addr = string_address_to_uint32_t(network.substr(0, pos), error);
+    if (error)
+        return false;
+
+    return (ip_addr & network_mask) == network_addr;
 }
 
 riorita::Bytes processRequest(const string& remoteAddr, const riorita::Request& request)
@@ -118,13 +165,28 @@ public:
         return _socket;
     }
 
-    void start()
+    void start(const vector<string>& allowed_remote_addrs)
     {
         remoteAddr = boost::lexical_cast<std::string>(_socket.remote_endpoint());
-        *lout << "New connection " << remoteAddr << endl;
-        sessions.insert(shared_from_this());
-        boost::system::error_code error;
-        handleStart(error);    
+        *lout << "Testing connection " << remoteAddr << endl;
+
+        bool allowed = false;
+        for (size_t i = 0; i < allowed_remote_addrs.size(); i++)
+            if (string_address_matches(remoteAddr, allowed_remote_addrs[i]))
+            {
+                *lout << "Connection " << remoteAddr << " matches " << allowed_remote_addrs[i] << endl;
+                allowed = true;
+            }
+
+        if (allowed)
+        {
+            *lout << "New connection " << remoteAddr << endl;
+            sessions.insert(shared_from_this());
+            boost::system::error_code error;
+            handleStart(error);    
+        }
+        else
+            *lout << "Denied " << remoteAddr << endl;
     }
 
     void handleStart(const boost::system::error_code& error)
@@ -199,6 +261,13 @@ public:
             {
                 response = processRequest(remoteAddr, *request);
 
+                *lout
+                     << "Ready to async_write " << riorita::toChars(request->type)
+                     << " in " << (currentTimeMillis() - startTimeMillis) << " ms"
+                     << ", size=" << requestBytes.size
+                     << " [" << remoteAddr << ", id=" << request->id << "]"
+                     << endl;
+
                 boost::asio::async_write(
                     _socket,
                     boost::asio::buffer(response.data, response.size),
@@ -263,10 +332,27 @@ class RioritaServer
 {
 public:
     RioritaServer(boost::asio::io_service& io_service,
-        const tcp::endpoint& endpoint)
+        const tcp::endpoint& endpoint, const string& allowedRemoteAddrs)
         : io_service_(io_service),
         acceptor_(io_service)
     {
+        allowed_remote_addrs_.clear();
+        string remote_addr;
+        for (size_t i = 0; i < allowedRemoteAddrs.length(); i++)
+            if (allowedRemoteAddrs[i] != ';')
+                remote_addr += allowedRemoteAddrs[i];
+            else if (!remote_addr.empty())
+            {
+                allowed_remote_addrs_.push_back(remote_addr);
+                remote_addr = "";
+            }
+        if (!remote_addr.empty())
+            allowed_remote_addrs_.push_back(remote_addr);
+
+        *lout << "Allowed size: " << allowed_remote_addrs_.size() << endl;
+        for (size_t i = 0; i < allowed_remote_addrs_.size(); i++)
+            *lout << "Allowed from: " << allowed_remote_addrs_[i] << endl;
+
         acceptor_.open(endpoint.protocol());
         acceptor_.set_option(boost::asio::ip::tcp::acceptor::reuse_address(true));
         acceptor_.bind(endpoint);
@@ -287,7 +373,7 @@ public:
     void handleAccept(const boost::system::error_code& error)
     {
         if (!error)
-            session->start();
+            session->start(allowed_remote_addrs_);
 
         startAccept();
     }
@@ -295,6 +381,7 @@ public:
 private:
     boost::asio::io_service& io_service_;
     tcp::acceptor acceptor_;
+    vector<string> allowed_remote_addrs_;
 };
 
 typedef boost::shared_ptr<RioritaServer> RioritaServerPtr;
@@ -330,6 +417,7 @@ boost::asio::io_service io_service(4);
 int main(int argc, char* argv[])
 {
     int port;
+    string allowedRemoteAddrs;
     
     {
         po::options_description description("=== riorita ===\nOptions");
@@ -344,6 +432,7 @@ int main(int argc, char* argv[])
             ("data", po::value<string>(&dataDir)->default_value("data"), "Data directory")
             ("backend", po::value<string>(&backend)->default_value(DEFAULT_BACKEND), "Backend: rocksdb, leveldb, files, compact or memory")
             ("port", po::value<int>(&port)->default_value(8024), "Port")
+            ("allowed", po::value<string>(&allowedRemoteAddrs)->default_value("0.0.0.0;127.0.0.1"), "Allows remote addresses: example '212.193.32.0/19;0.0.0.0;127.0.0.1'")
         ;
 
         po::variables_map varmap;
@@ -374,7 +463,7 @@ int main(int argc, char* argv[])
         {
             *lout << "Listen port " << port << endl;
             tcp::endpoint endpoint(tcp::v4(), short(port));
-            RioritaServerPtr server(new RioritaServer(io_service, endpoint));
+            RioritaServerPtr server(new RioritaServer(io_service, endpoint, allowedRemoteAddrs));
             servers.push_back(server);
         }
 
