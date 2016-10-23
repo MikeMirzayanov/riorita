@@ -31,6 +31,7 @@ public class Riorita {
     private InputStream inputStream;
     private OutputStream outputStream;
 
+    private final String hostAndPort;
     private final boolean reconnect;
 
     public Riorita(String host, int port) throws IOException {
@@ -38,6 +39,7 @@ public class Riorita {
     }
 
     public Riorita(String host, int port, boolean reconnect) throws IOException {
+        this.hostAndPort = host + ":" + port;
         this.reconnect = reconnect;
         socketAddress = new InetSocketAddress(host, port);
     }
@@ -45,7 +47,7 @@ public class Riorita {
     private void reconnectQuietly() {
         if (socket != null) {
             try {
-                logger.info("Closing socket.");
+                logger.info("Closing socket [" + hostAndPort + "].");
                 socket.close();
             } catch (IOException e) {
                 // No operations.
@@ -56,13 +58,14 @@ public class Riorita {
             socket = new Socket();
             socket.setReceiveBufferSize(RECEIVE_BUFFER_SIZE);
             socket.setSendBufferSize(SEND_BUFFER_SIZE);
+            socket.setTcpNoDelay(true);
 
             socket.connect(socketAddress);
 
             inputStream = socket.getInputStream();
             outputStream = socket.getOutputStream();
 
-            logger.info("Connected to " + socketAddress + ".");
+            logger.info("Connected to " + hostAndPort + ".");
         } catch (IOException ignored) {
             // No operations.
         }
@@ -82,12 +85,16 @@ public class Riorita {
         }
     }
 
-    private <T> T runOperation(Operation<T> operation) throws IOException {
+    private <T> T runOperation(Operation<T> operation, int size) throws IOException {
         long startTimeMills = System.currentTimeMillis();
 
         try {
             if (!reconnect) {
-                return operation.run();
+                T result = operation.run();
+                if (result instanceof byte[]) {
+                    size += ((byte[]) result).length;
+                }
+                return result;
             } else {
                 IOException exception = null;
                 int iteration = 0;
@@ -102,7 +109,11 @@ public class Riorita {
 
                     if (socket != null && socket.isConnected() && !socket.isClosed()) {
                         try {
-                            return operation.run();
+                            T result = operation.run();
+                            if (result instanceof byte[]) {
+                                size += ((byte[]) result).length;
+                            }
+                            return result;
                         } catch (IOException e) {
                             logger.warn("Can't process operation.", e);
                             exception = e;
@@ -122,15 +133,17 @@ public class Riorita {
                     }
                 }
 
-                throw exception == null ? new IOException("Can't connect to " + socketAddress + ".") : exception;
+                throw exception == null ? new IOException("Can't connect to " + hostAndPort + ".") : exception;
             }
         } finally {
             long duration = System.currentTimeMillis() - startTimeMills;
 
             if (duration > WARN_THRESHOLD_MILLIS) {
-                logger.warn("Operation " + operation.getType() + " takes " + duration + " ms, id=" + operation.getRequestId() + ".");
+                logger.warn("Operation " + operation.getType() + " takes " + duration + " ms, id=" + operation.getRequestId() + " [size=" + size + " bytes, " + hostAndPort + "].");
+                // System.out.println("Operation " + operation.getType() + " takes " + duration + " ms, id=" + operation.getRequestId() + " [size=" + size + " bytes].");
             } else {
-                logger.info("Operation " + operation.getType() + " takes " + duration + " ms, id=" + operation.getRequestId() + ".");
+                logger.info("Operation " + operation.getType() + " takes " + duration + " ms, id=" + operation.getRequestId() + " [size=" + size + " bytes, " + hostAndPort + "].");
+                // System.out.println("Operation " + operation.getType() + " takes " + duration + " ms, id=" + operation.getRequestId() + " [size=" + size + " bytes].");
             }
         }
     }
@@ -245,7 +258,7 @@ public class Riorita {
             public long getRequestId() {
                 return requestId;
             }
-        });
+        }, 0);
     }
 
     public boolean has(String key) throws IOException {
@@ -278,7 +291,7 @@ public class Riorita {
             public long getRequestId() {
                 return requestId;
             }
-        });
+        }, keyBytes.length);
     }
 
     public boolean delete(String key) throws IOException {
@@ -311,7 +324,7 @@ public class Riorita {
             public long getRequestId() {
                 return requestId;
             }
-        });
+        }, keyBytes.length);
     }
 
     public boolean put(String key, byte[] bytes) throws IOException {
@@ -346,7 +359,7 @@ public class Riorita {
             public long getRequestId() {
                 return requestId;
             }
-        });
+        }, keyBytes.length + bytes.length);
     }
 
     public byte[] get(String key) throws IOException {
@@ -399,7 +412,7 @@ public class Riorita {
             public long getRequestId() {
                 return requestId;
             }
-        });
+        }, keyBytes.length);
     }
 
     public enum Type {
