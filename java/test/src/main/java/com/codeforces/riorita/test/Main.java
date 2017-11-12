@@ -24,7 +24,7 @@ public class Main {
     private static String RIORITA_HOST = "127.0.0.1";
 
     public static final String RIORITA_PORT_PREFIX = "--riorita.port=";
-    private static int RIORITA_PORT = 8024;
+    private static int RIORITA_PORT = 8100;
 
     public static final String REQUEST_COUNT_PREFIX = "--n=";
     private static int REQUEST_COUNT = 10000;

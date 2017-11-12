@@ -2,10 +2,7 @@ package com.codeforces.riorita;
 
 import org.apache.log4j.Logger;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.UnsupportedEncodingException;
+import java.io.*;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketAddress;
@@ -18,11 +15,12 @@ public class Riorita {
 
     private static final byte MAGIC_BYTE = 113;
     private static final byte PROTOCOL_VERSION = 1;
-    private static final int MAX_RECONNECT_COUNT = 10;
+    private static final int MAX_RECONNECT_COUNT = 100;
     private static final long WARN_THRESHOLD_MILLIS = 100;
+    private static final int MAX_OPERATION_COUNT_PER_CONNECTION = 1000;
 
-    private static final int RECEIVE_BUFFER_SIZE = 1048576;
-    private static final int SEND_BUFFER_SIZE = 1048576;
+    private static final int RECEIVE_BUFFER_SIZE = 16 * 1024 * 1024;
+    private static final int SEND_BUFFER_SIZE = 16 * 1024 * 1024;
 
     private final Random random = new Random(Riorita.class.hashCode() ^ this.hashCode());
 
@@ -33,6 +31,7 @@ public class Riorita {
 
     private final String hostAndPort;
     private final boolean reconnect;
+    private int connectionOperationCount;
 
     public Riorita(String host, int port) throws IOException {
         this(host, port, true);
@@ -47,7 +46,7 @@ public class Riorita {
     private void reconnectQuietly() {
         if (socket != null) {
             try {
-                logger.info("Closing socket [" + hostAndPort + "].");
+                logger.warn("Closing socket [" + hostAndPort + "].");
                 socket.close();
             } catch (IOException e) {
                 // No operations.
@@ -59,13 +58,16 @@ public class Riorita {
             socket.setReceiveBufferSize(RECEIVE_BUFFER_SIZE);
             socket.setSendBufferSize(SEND_BUFFER_SIZE);
             socket.setTcpNoDelay(true);
+            socket.setKeepAlive(true);
+            socket.setReuseAddress(true);
 
             socket.connect(socketAddress);
 
-            inputStream = socket.getInputStream();
-            outputStream = socket.getOutputStream();
+            inputStream = new BufferedInputStream(socket.getInputStream());
+            outputStream = new BufferedOutputStream(socket.getOutputStream());
 
-            logger.info("Connected to " + hostAndPort + ".");
+            connectionOperationCount = 0;
+            logger.warn("Connected to " + hostAndPort + ".");
         } catch (IOException ignored) {
             // No operations.
         }
@@ -86,6 +88,14 @@ public class Riorita {
     }
 
     private <T> T runOperation(Operation<T> operation, int size) throws IOException {
+        connectionOperationCount++;
+        if (connectionOperationCount > MAX_OPERATION_COUNT_PER_CONNECTION) {
+            logger.warn("Reconnect expected because of"
+                    + " connectionOperationCount=" + connectionOperationCount
+                    + " > MAX_OPERATION_COUNT_PER_CONNECTION=" + MAX_OPERATION_COUNT_PER_CONNECTION
+                    + ".");
+        }
+
         long startTimeMills = System.currentTimeMillis();
 
         try {
@@ -100,7 +110,10 @@ public class Riorita {
                 int iteration = 0;
 
                 while (iteration < MAX_RECONNECT_COUNT) {
-                    if (socket == null || !socket.isConnected() || socket.isClosed()) {
+                    if (connectionOperationCount > MAX_OPERATION_COUNT_PER_CONNECTION) {
+                        logger.warn("connectionOperationCount > MAX_OPERATION_COUNT_PER_CONNECTION");
+                        reconnectQuietly();
+                    } else if (socket == null || !socket.isConnected() || socket.isClosed()) {
                         logger.warn("socket == null || !socket.isConnected() || socket.isClosed()");
                         reconnectQuietly();
                     }
@@ -231,6 +244,7 @@ public class Riorita {
         }
     }
 
+    @SuppressWarnings("unused")
     public boolean ping() throws IOException {
         final long requestId = nextRequestId();
         final ByteBuffer pingBuffer = newRequestBuffer(Type.PING, requestId, 0, null);
@@ -261,6 +275,7 @@ public class Riorita {
         }, 0);
     }
 
+    @SuppressWarnings("WeakerAccess")
     public boolean has(String key) throws IOException {
         byte[] keyBytes = getStringBytes(key);
 
@@ -294,6 +309,7 @@ public class Riorita {
         }, keyBytes.length);
     }
 
+    @SuppressWarnings("unused")
     public boolean delete(String key) throws IOException {
         byte[] keyBytes = getStringBytes(key);
 
@@ -327,6 +343,7 @@ public class Riorita {
         }, keyBytes.length);
     }
 
+    @SuppressWarnings("WeakerAccess")
     public boolean put(String key, byte[] bytes) throws IOException {
         byte[] keyBytes = getStringBytes(key);
 
@@ -362,6 +379,7 @@ public class Riorita {
         }, keyBytes.length + bytes.length);
     }
 
+    @SuppressWarnings("WeakerAccess")
     public byte[] get(String key) throws IOException {
         byte[] keyBytes = getStringBytes(key);
 

@@ -24,3 +24,9 @@
 /src/riorita.log
 /src/riorita.obj
 /src/storage.obj
+/java/riorita/native/riorita_engine.exp
+/java/riorita/native/riorita_engine.lib
+/java/riorita/native/riorita_engine.obj
+/java/riorita/native/riorita_engine.pdb
+/java/riorita/native/riorita_engine.dll
+/java/riorita/native/*.obj
