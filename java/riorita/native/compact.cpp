@@ -86,8 +86,6 @@ void FileSystemCompactStorage::erase(const string& section) {
             appendSectionNameAndPosition(section, p.first, p.second);
         }
     }
-
-    throw runtime_error("Riorita: erase");
 }
 
 bool FileSystemCompactStorage::erase(const string& section, const string& name, timestamp current_timestamp) {
