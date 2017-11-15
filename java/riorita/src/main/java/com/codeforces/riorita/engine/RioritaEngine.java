@@ -69,8 +69,6 @@ public class RioritaEngine implements Engine {
     @Override
     public native void clear();
 
-    public native long id(long dd);
-
     @SuppressWarnings("SameParameterValue")
     private static void loadLibraryFromJar(String name) throws IOException {
         InputStream in = RioritaEngine.class.getResourceAsStream("/" + name);
@@ -112,8 +110,16 @@ public class RioritaEngine implements Engine {
     }
 
     static {
+        String os = System.getProperty("os.name").toLowerCase();
+
         try {
-            loadLibraryFromJar("riorita_engine.dll");
+            if (os.contains("linux")) {
+                loadLibraryFromJar("riorita_engine.so");
+            } else if (os.contains("windows")) {
+                loadLibraryFromJar("riorita_engine.so");
+            } else {
+                throw new RuntimeException("Expected 'linux' or 'windows' os, but found '" + os + "'.");
+            }
         } catch (IOException e) {
             throw new RuntimeException("Can't load riorita_engine native library.", e);
         }

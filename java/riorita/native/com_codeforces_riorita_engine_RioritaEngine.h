@@ -63,14 +63,6 @@ JNIEXPORT void JNICALL Java_com_codeforces_riorita_engine_RioritaEngine_erase__L
 JNIEXPORT void JNICALL Java_com_codeforces_riorita_engine_RioritaEngine_clear
   (JNIEnv *, jobject);
 
-/*
- * Class:     com_codeforces_riorita_engine_RioritaEngine
- * Method:    id
- * Signature: (J)J
- */
-JNIEXPORT jlong JNICALL Java_com_codeforces_riorita_engine_RioritaEngine_id
-  (JNIEnv *, jobject, jlong);
-
 #ifdef __cplusplus
 }
 #endif
