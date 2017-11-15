@@ -116,7 +116,7 @@ public class RioritaEngine implements Engine {
             if (os.contains("linux")) {
                 loadLibraryFromJar("riorita_engine.so");
             } else if (os.contains("windows")) {
-                loadLibraryFromJar("riorita_engine.so");
+                loadLibraryFromJar("riorita_engine.dll");
             } else {
                 throw new RuntimeException("Expected 'linux' or 'windows' os, but found '" + os + "'.");
             }
