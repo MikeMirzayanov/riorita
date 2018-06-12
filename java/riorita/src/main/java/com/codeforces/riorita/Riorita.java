@@ -31,7 +31,7 @@ public class Riorita {
 
     private final String hostAndPort;
     private final boolean reconnect;
-    private int connectionOperationCount;
+    private volatile int connectionOperationCount;
 
     public Riorita(String host, int port) throws IOException {
         this(host, port, true);
@@ -46,7 +46,7 @@ public class Riorita {
     private void reconnectQuietly() {
         if (socket != null) {
             try {
-                logger.warn("Closing socket [" + hostAndPort + "].");
+                logger.warn("Closing socket [" + hostAndPort + "] {" + this + "}.");
                 socket.close();
             } catch (IOException e) {
                 // No operations.
@@ -67,7 +67,7 @@ public class Riorita {
             outputStream = new BufferedOutputStream(socket.getOutputStream());
 
             connectionOperationCount = 0;
-            logger.warn("Connected to " + hostAndPort + ".");
+            logger.warn("Connected to " + hostAndPort + ", connectionOperationCount = 0 {" + this + "}.");
         } catch (IOException ignored) {
             // No operations.
         }
@@ -80,7 +80,7 @@ public class Riorita {
             int read = inputStream.read(bytes, off + done, size - done);
 
             if (read < 0) {
-                throw new IOException("Unexpected end of inputStream [requestId=" + requestId + "].");
+                throw new IOException("Unexpected end of inputStream [requestId=" + requestId + "] {" + this + "}.");
             }
 
             done += read;
@@ -89,11 +89,15 @@ public class Riorita {
 
     private <T> T runOperation(Operation<T> operation, int size) throws IOException {
         connectionOperationCount++;
+        if (connectionOperationCount % 100 == 0) {
+            logger.warn("connectionOperationCount: " + connectionOperationCount + " {" + this + "}.");
+        }
+
         if (connectionOperationCount > MAX_OPERATION_COUNT_PER_CONNECTION) {
             logger.warn("Reconnect expected because of"
                     + " connectionOperationCount=" + connectionOperationCount
                     + " > MAX_OPERATION_COUNT_PER_CONNECTION=" + MAX_OPERATION_COUNT_PER_CONNECTION
-                    + ".");
+                    + " {" + this + "}.");
         }
 
         long startTimeMills = System.currentTimeMillis();
@@ -111,10 +115,10 @@ public class Riorita {
 
                 while (iteration < MAX_RECONNECT_COUNT) {
                     if (connectionOperationCount > MAX_OPERATION_COUNT_PER_CONNECTION) {
-                        logger.warn("connectionOperationCount > MAX_OPERATION_COUNT_PER_CONNECTION");
+                        logger.warn("connectionOperationCount > MAX_OPERATION_COUNT_PER_CONNECTION {" + this + "}.");
                         reconnectQuietly();
                     } else if (socket == null || !socket.isConnected() || socket.isClosed()) {
-                        logger.warn("socket == null || !socket.isConnected() || socket.isClosed()");
+                        logger.warn("socket == null || !socket.isConnected() || socket.isClosed() {" + this + "}.");
                         reconnectQuietly();
                     }
 
@@ -146,16 +150,16 @@ public class Riorita {
                     }
                 }
 
-                throw exception == null ? new IOException("Can't connect to " + hostAndPort + ".") : exception;
+                throw exception == null ? new IOException("Can't connect to " + hostAndPort + " {" + this + "}.") : exception;
             }
         } finally {
             long duration = System.currentTimeMillis() - startTimeMills;
 
             if (duration > WARN_THRESHOLD_MILLIS) {
-                logger.warn("Operation " + operation.getType() + " takes " + duration + " ms, id=" + operation.getRequestId() + " [size=" + size + " bytes, " + hostAndPort + "].");
+                logger.warn("Operation " + operation.getType() + " takes " + duration + " ms, id=" + operation.getRequestId() + " [size=" + size + " bytes, " + hostAndPort + "] {" + this + "}.");
                 // System.out.println("Operation " + operation.getType() + " takes " + duration + " ms, id=" + operation.getRequestId() + " [size=" + size + " bytes].");
             } else {
-                logger.info("Operation " + operation.getType() + " takes " + duration + " ms, id=" + operation.getRequestId() + " [size=" + size + " bytes, " + hostAndPort + "].");
+                logger.info("Operation " + operation.getType() + " takes " + duration + " ms, id=" + operation.getRequestId() + " [size=" + size + " bytes, " + hostAndPort + "] {" + this + "}.");
                 // System.out.println("Operation " + operation.getType() + " takes " + duration + " ms, id=" + operation.getRequestId() + " [size=" + size + " bytes].");
             }
         }
@@ -203,30 +207,30 @@ public class Riorita {
 
         int magicByte = responseBuffer.get();
         if (magicByte != MAGIC_BYTE) {
-            throw new IOException("Invalid magic: expected " + (int) MAGIC_BYTE + ", found " + magicByte + " [requestId=" + requestId + "].");
+            throw new IOException("Invalid magic: expected " + (int) MAGIC_BYTE + ", found " + magicByte + " [requestId=" + requestId + "] {" + this + "}.");
         }
 
         int protocolVersion = responseBuffer.get();
         if (protocolVersion != PROTOCOL_VERSION) {
-            throw new IOException("Invalid protocol: expected " + (int) PROTOCOL_VERSION + ", found " + protocolVersion + " [requestId=" + requestId + "].");
+            throw new IOException("Invalid protocol: expected " + (int) PROTOCOL_VERSION + ", found " + protocolVersion + " [requestId=" + requestId + "] {" + this + "}.");
         }
 
         long receivedRequestId = responseBuffer.getLong();
         if (receivedRequestId != requestId) {
-            throw new IOException("Invalid request id: expected " + requestId + ", found " + receivedRequestId + ".");
+            throw new IOException("Invalid request id: expected " + requestId + ", found " + receivedRequestId + " {" + this + "}.");
         }
 
         byte success = responseBuffer.get();
         if (success != 0 && success != 1) {
-            throw new IOException("Operation returned illegal success " + success + " [requestId=" + requestId + "].");
+            throw new IOException("Operation returned illegal success " + success + " [requestId=" + requestId + "] {" + this + "}.");
         }
         if (success != 1) {
-            throw new IOException("Operation didn't return with success [requestId=" + requestId + "].");
+            throw new IOException("Operation didn't return with success [requestId=" + requestId + "] {" + this + "}.");
         }
 
         byte verdict = responseBuffer.get();
         if (verdict != 0 && verdict != 1) {
-            throw new IOException("Operation returned illegal verdict " + verdict + " [requestId=" + requestId + "].");
+            throw new IOException("Operation returned illegal verdict " + verdict + " [requestId=" + requestId + "] {" + this + "}.");
         }
 
         return verdict == 1;
@@ -240,7 +244,7 @@ public class Riorita {
         try {
             return s.getBytes("UTF-8");
         } catch (UnsupportedEncodingException e) {
-            throw new RuntimeException("Can't find UTF-8.");
+            throw new RuntimeException("Can't find UTF-8 {" + this + "}.");
         }
     }
 
@@ -257,7 +261,7 @@ public class Riorita {
 
                 int responseLength = readResponseLength(requestId);
                 if (responseLength != 16) {
-                    throw new IOException("Expected exactly 16 bytes in response [requestId=" + requestId + "].");
+                    throw new IOException("Expected exactly 16 bytes in response [requestId=" + requestId + "] {" + this + "}.");
                 }
 
                 return readResponseVerdict(requestId);
@@ -291,7 +295,7 @@ public class Riorita {
 
                 int responseLength = readResponseLength(requestId);
                 if (responseLength != 16) {
-                    throw new IOException("Expected exactly 16 bytes in response [requestId=" + requestId + "].");
+                    throw new IOException("Expected exactly 16 bytes in response [requestId=" + requestId + "] {" + this + "}.");
                 }
 
                 return readResponseVerdict(requestId);
@@ -325,7 +329,7 @@ public class Riorita {
 
                 int responseLength = readResponseLength(requestId);
                 if (responseLength != 16) {
-                    throw new IOException("Expected exactly 16 bytes in response [requestId=" + requestId + "].");
+                    throw new IOException("Expected exactly 16 bytes in response [requestId=" + requestId + "] {" + this + "}.");
                 }
 
                 return readResponseVerdict(requestId);
@@ -361,7 +365,7 @@ public class Riorita {
 
                 int responseLength = readResponseLength(requestId);
                 if (responseLength != 16) {
-                    throw new IOException("Expected exactly 16 bytes in response [requestId=" + requestId + "].");
+                    throw new IOException("Expected exactly 16 bytes in response [requestId=" + requestId + "] {" + this + "}.");
                 }
 
                 return readResponseVerdict(requestId);
@@ -395,14 +399,14 @@ public class Riorita {
 
                 int responseLength = readResponseLength(requestId);
                 if (responseLength < 16) {
-                    throw new IOException("Expected at least 16 bytes in response, but " + responseLength + " found [requestId=" + requestId + "].");
+                    throw new IOException("Expected at least 16 bytes in response, but " + responseLength + " found [requestId=" + requestId + "] {" + this + "}.");
                 }
 
                 boolean verdict = readResponseVerdict(requestId);
 
                 if (!verdict) {
                     if (responseLength != 16) {
-                        throw new IOException("Expected exactly 16 bytes in response [requestId=" + requestId + "].");
+                        throw new IOException("Expected exactly 16 bytes in response [requestId=" + requestId + "] {" + this + "}.");
                     }
 
                     return null;
@@ -412,7 +416,7 @@ public class Riorita {
 
                     int valueLength = valueLengthBuffer.getInt();
                     if (valueLength < 0) {
-                        throw new IOException("Expected positive length of value in response [requestId=" + requestId + "].");
+                        throw new IOException("Expected positive length of value in response [requestId=" + requestId + "] {" + this + "}.");
                     }
 
                     ByteBuffer valueBuffer = ByteBuffer.allocate(valueLength).order(ByteOrder.LITTLE_ENDIAN);

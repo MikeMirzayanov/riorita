@@ -1,6 +1,7 @@
 #include "protocol.h"
 #include "storage.h"
 #include "logger.h"
+#include "cache.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -33,6 +34,7 @@ class Session;
 typedef boost::shared_ptr<Session> SessionPtr;
 set<SessionPtr> sessions;
 
+riorita::Cache cache;
 boost::shared_ptr<riorita::Logger> lout;
 boost::shared_ptr<riorita::Storage> storage;
 
@@ -102,14 +104,41 @@ riorita::Bytes processRequest(const string& remoteAddr, const riorita::Request& 
     string key(request.key.data, request.key.data + request.key.size);
 
     if (request.type == riorita::HAS)
-        verdict = storage->has(key);
+    {
+        if (cache.has(key))
+        {
+           *lout
+                << "From cache: " << riorita::toChars(request.type)
+                << " in " << (currentTimeMillis() - startTimeMillis) << " ms,"
+                << " returns success=" << success << ", verdict=" << verdict
+                << " [" << remoteAddr << ", id=" << request.id << "]"
+                << endl;
+            verdict = true;
+        }
+        else
+            verdict = storage->has(key);
+    }
 
     if (request.type == riorita::GET)
-        verdict = storage->get(key, data);
+    {
+        if (cache.get(key, data))
+        {
+           *lout
+                << "From cache: " << riorita::toChars(request.type)
+                << " in " << (currentTimeMillis() - startTimeMillis) << " ms,"
+                << " returns success=" << success << ", verdict=" << verdict << ", size=" << data.length()
+                << " [" << remoteAddr << ", id=" << request.id << "]"
+                << endl;
+            verdict = true;
+        }
+        else
+            verdict = storage->get(key, data);
+    }
 
 #undef DELETE
     if (request.type == riorita::DELETE)
     {
+        cache.erase(key);
         storage->erase(key);
         verdict = true;
     }
@@ -117,6 +146,7 @@ riorita::Bytes processRequest(const string& remoteAddr, const riorita::Request& 
     if (request.type == riorita::PUT)
     {
         string value(request.value.data, request.value.data + request.value.size);
+        cache.put(key, value);
         storage->put(key, value);
         verdict = true;
     }
