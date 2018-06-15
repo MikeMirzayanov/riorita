@@ -5,6 +5,7 @@
 #include <string>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/date_time/posix_time/posix_time_io.hpp>
+#include <boost/thread/mutex.hpp>
 
 namespace riorita {
 
@@ -20,6 +21,7 @@ public:
     template<typename T>
     Logger& operator << (const T& o)
     {
+        boost::unique_lock<boost::mutex> scoped_lock(mutex);
         if (newLine)
             ofs << boost::posix_time::microsec_clock::local_time() << ": ",
             newLine = false;
@@ -30,6 +32,7 @@ public:
     typedef std::ostream& (*ostream_manipulator)(std::ostream&);
     Logger& operator << (ostream_manipulator pf)
     {
+        boost::unique_lock<boost::mutex> scoped_lock(mutex);
         ofs << pf << std::flush;
         newLine = true;
         return *this;
@@ -43,6 +46,7 @@ public:
 private:
     std::ofstream ofs; 
     bool newLine;
+    boost::mutex mutex;
 };
 
 }
