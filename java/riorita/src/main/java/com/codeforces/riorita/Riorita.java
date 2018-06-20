@@ -9,7 +9,9 @@ import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicInteger;
 
+@SuppressWarnings("unused")
 public class Riorita {
     private static final Logger logger = Logger.getLogger(Riorita.class);
 
@@ -30,17 +32,26 @@ public class Riorita {
     private OutputStream outputStream;
 
     private final String hostAndPort;
+    private String keyPrefix = "";
     private final boolean reconnect;
-    private volatile int connectionOperationCount;
+    private AtomicInteger connectionOperationCount = new AtomicInteger();
 
-    public Riorita(String host, int port) throws IOException {
+    public Riorita(String host, int port) {
         this(host, port, true);
     }
 
-    public Riorita(String host, int port, boolean reconnect) throws IOException {
+    public Riorita(String host, int port, boolean reconnect) {
         this.hostAndPort = host + ":" + port;
         this.reconnect = reconnect;
         socketAddress = new InetSocketAddress(host, port);
+    }
+
+    public void setKeyPrefix(String keyPrefix) {
+        this.keyPrefix = keyPrefix;
+    }
+
+    private String applyKeyPrefix(String key) {
+        return keyPrefix + key;
     }
 
     private void reconnectQuietly() {
@@ -66,13 +77,14 @@ public class Riorita {
             inputStream = new BufferedInputStream(socket.getInputStream());
             outputStream = new BufferedOutputStream(socket.getOutputStream());
 
-            connectionOperationCount = 0;
+            connectionOperationCount.set(0);
             logger.warn("Connected to " + hostAndPort + ", connectionOperationCount = 0 {" + this + "}.");
         } catch (IOException ignored) {
             // No operations.
         }
     }
 
+    @SuppressWarnings("SameParameterValue")
     private void readExactly(byte[] bytes, int off, int size, long requestId) throws IOException {
         int done = 0;
 
@@ -87,15 +99,28 @@ public class Riorita {
         }
     }
 
+    private boolean writeRequestAndReadResponseVerdict(ByteBuffer request, long requestId) throws IOException {
+        outputStream.write(request.array());
+        outputStream.flush();
+
+        int responseLength = readResponseLength(requestId);
+        if (responseLength != 16) {
+            throw new IOException("Expected exactly 16 bytes in response [requestId=" + requestId + "] {" + this + "}.");
+        }
+
+        return readResponseVerdict(requestId);
+    }
+
     private <T> T runOperation(Operation<T> operation, int size) throws IOException {
-        connectionOperationCount++;
-        if (connectionOperationCount % 100 == 0) {
+        int newConnectionOperationCount = connectionOperationCount.incrementAndGet();
+
+        if (newConnectionOperationCount % 100 == 0) {
             logger.warn("connectionOperationCount: " + connectionOperationCount + " {" + this + "}.");
         }
 
-        if (connectionOperationCount > MAX_OPERATION_COUNT_PER_CONNECTION) {
+        if (newConnectionOperationCount > MAX_OPERATION_COUNT_PER_CONNECTION) {
             logger.warn("Reconnect expected because of"
-                    + " connectionOperationCount=" + connectionOperationCount
+                    + " connectionOperationCount=" + newConnectionOperationCount
                     + " > MAX_OPERATION_COUNT_PER_CONNECTION=" + MAX_OPERATION_COUNT_PER_CONNECTION
                     + " {" + this + "}.");
         }
@@ -114,7 +139,7 @@ public class Riorita {
                 int iteration = 0;
 
                 while (iteration < MAX_RECONNECT_COUNT) {
-                    if (connectionOperationCount > MAX_OPERATION_COUNT_PER_CONNECTION) {
+                    if (connectionOperationCount.get() > MAX_OPERATION_COUNT_PER_CONNECTION) {
                         logger.warn("connectionOperationCount > MAX_OPERATION_COUNT_PER_CONNECTION {" + this + "}.");
                         reconnectQuietly();
                     } else if (socket == null || !socket.isConnected() || socket.isClosed()) {
@@ -256,15 +281,7 @@ public class Riorita {
         return runOperation(new Operation<Boolean>() {
             @Override
             public Boolean run() throws IOException {
-                outputStream.write(pingBuffer.array());
-                outputStream.flush();
-
-                int responseLength = readResponseLength(requestId);
-                if (responseLength != 16) {
-                    throw new IOException("Expected exactly 16 bytes in response [requestId=" + requestId + "] {" + this + "}.");
-                }
-
-                return readResponseVerdict(requestId);
+                return writeRequestAndReadResponseVerdict(pingBuffer, requestId);
             }
 
             @Override
@@ -281,8 +298,9 @@ public class Riorita {
 
     @SuppressWarnings("WeakerAccess")
     public boolean has(String key) throws IOException {
-        byte[] keyBytes = getStringBytes(key);
+        key = applyKeyPrefix(key);
 
+        byte[] keyBytes = getStringBytes(key);
         final long requestId = nextRequestId();
         final ByteBuffer hasBuffer = newRequestBuffer(Type.HAS, requestId, keyBytes.length, null);
         hasBuffer.put(keyBytes);
@@ -290,15 +308,7 @@ public class Riorita {
         return runOperation(new Operation<Boolean>() {
             @Override
             public Boolean run() throws IOException {
-                outputStream.write(hasBuffer.array());
-                outputStream.flush();
-
-                int responseLength = readResponseLength(requestId);
-                if (responseLength != 16) {
-                    throw new IOException("Expected exactly 16 bytes in response [requestId=" + requestId + "] {" + this + "}.");
-                }
-
-                return readResponseVerdict(requestId);
+                return writeRequestAndReadResponseVerdict(hasBuffer, requestId);
             }
 
             @Override
@@ -315,8 +325,9 @@ public class Riorita {
 
     @SuppressWarnings("unused")
     public boolean delete(String key) throws IOException {
-        byte[] keyBytes = getStringBytes(key);
+        key = applyKeyPrefix(key);
 
+        byte[] keyBytes = getStringBytes(key);
         final long requestId = nextRequestId();
         final ByteBuffer deleteBuffer = newRequestBuffer(Type.DELETE, requestId, keyBytes.length, null);
         deleteBuffer.put(keyBytes);
@@ -324,15 +335,7 @@ public class Riorita {
         return runOperation(new Operation<Boolean>() {
             @Override
             public Boolean run() throws IOException {
-                outputStream.write(deleteBuffer.array());
-                outputStream.flush();
-
-                int responseLength = readResponseLength(requestId);
-                if (responseLength != 16) {
-                    throw new IOException("Expected exactly 16 bytes in response [requestId=" + requestId + "] {" + this + "}.");
-                }
-
-                return readResponseVerdict(requestId);
+                return writeRequestAndReadResponseVerdict(deleteBuffer, requestId);
             }
 
             @Override
@@ -349,8 +352,9 @@ public class Riorita {
 
     @SuppressWarnings("WeakerAccess")
     public boolean put(String key, byte[] bytes) throws IOException {
-        byte[] keyBytes = getStringBytes(key);
+        key = applyKeyPrefix(key);
 
+        byte[] keyBytes = getStringBytes(key);
         final long requestId = nextRequestId();
         final ByteBuffer putBuffer = newRequestBuffer(Type.PUT, requestId, keyBytes.length, bytes.length);
         putBuffer.put(keyBytes);
@@ -360,15 +364,7 @@ public class Riorita {
         return runOperation(new Operation<Boolean>() {
             @Override
             public Boolean run() throws IOException {
-                outputStream.write(putBuffer.array());
-                outputStream.flush();
-
-                int responseLength = readResponseLength(requestId);
-                if (responseLength != 16) {
-                    throw new IOException("Expected exactly 16 bytes in response [requestId=" + requestId + "] {" + this + "}.");
-                }
-
-                return readResponseVerdict(requestId);
+                return writeRequestAndReadResponseVerdict(putBuffer, requestId);
             }
 
             @Override
@@ -385,8 +381,9 @@ public class Riorita {
 
     @SuppressWarnings("WeakerAccess")
     public byte[] get(String key) throws IOException {
-        byte[] keyBytes = getStringBytes(key);
+        key = applyKeyPrefix(key);
 
+        byte[] keyBytes = getStringBytes(key);
         final long requestId = nextRequestId();
         final ByteBuffer getBuffer = newRequestBuffer(Type.GET, requestId, keyBytes.length, null);
         getBuffer.put(keyBytes);
