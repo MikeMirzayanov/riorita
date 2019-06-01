@@ -27,3 +27,7 @@
 /java/riorita/native/riorita_engine.obj
 /java/riorita/native/riorita_engine.pdb
 /java/riorita/native/*.obj
+.settings
+.classpath
+.project
+target/
