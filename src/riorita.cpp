@@ -40,7 +40,7 @@ boost::shared_ptr<riorita::Storage> storage;
 
 static long long currentTimeMillis()
 {
-    return (long long)(clock() / double(CLOCKS_PER_SEC) * 1000.0 + 0.5);
+    return (long long)(double(clock()) / CLOCKS_PER_SEC * 1000.0 + 0.5);
 }
 
 static uint32_t string_address_to_uint32_t(const std::string& ip, bool& error)
@@ -71,7 +71,7 @@ static bool string_address_matches(const std::string& ip, std::string network)
     if (network.find("/") == string::npos)
         network += "/32";
 
-    int pos = network.find("/");
+    size_t pos = network.find("/");
     int bits;
     if (sscanf(network.substr(pos + 1).c_str(), "%d", &bits) != 1)
         return false;
@@ -243,7 +243,7 @@ public:
                 && requestBytes.size >= MIN_VALID_REQUEST_SIZE
                 && requestBytes.size <= MAX_VALID_REQUEST_SIZE)
         {
-            requestBytes.size -= sizeof(riorita::int32);
+            requestBytes.size -= int(sizeof(riorita::int32));
 
             long long startTimeMillis = currentTimeMillis();
             requestBytes.data = new riorita::byte[requestBytes.size];

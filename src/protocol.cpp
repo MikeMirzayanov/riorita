@@ -11,6 +11,9 @@ namespace riorita {
 
 const char* requestTypeNames[] = {"?", "PING", "HAS", "GET", "PUT", "DELETE"};
 
+const int SIZEOF_BYTE = int(sizeof(byte));
+const int SIZEOF_INT32 = int(sizeof(int32));
+
 byte toByte(RequestType requestType) {
     return byte(requestType);
 }
@@ -39,16 +42,16 @@ Request* parseRequest(Bytes& bytes, int32 pos, int32& parsedByteCount)
 {
     parsedByteCount = 0;
 
-    int32 headerSize = sizeof(byte) // magic byte
-        + sizeof(byte) // protocol
-        + sizeof(byte) // type
+    int32 headerSize = SIZEOF_BYTE // magic byte
+        + SIZEOF_BYTE // protocol
+        + SIZEOF_BYTE // type
         + sizeof(RequestId) // request id
-        + sizeof(int32) // key length
+        + SIZEOF_INT32 // key length
     ;
     
     // cout << "headerSize=" << headerSize << endl;
 
-    int32 lengthSize = sizeof(int32);
+    int32 lengthSize = SIZEOF_INT32;
     
     if (pos + headerSize <= bytes.size)
     {
@@ -134,14 +137,14 @@ inline int32 copyBytes(int32 valueSize, const byte* value, byte* data)
 
 inline int32 copyByte(byte value, byte* data)
 {
-    memcpy(data, &value, sizeof(byte));
-    return sizeof(byte);
+    memcpy(data, &value, SIZEOF_BYTE);
+    return SIZEOF_BYTE;
 }
 
 inline int32 copyInt32(int32 value, byte* data)
 {
-    memcpy(data, &value, sizeof(int32));
-    return sizeof(int32);
+    memcpy(data, &value, SIZEOF_INT32);
+    return SIZEOF_INT32;
 }
 
 inline int32 copyInt64(int64 value, byte* data)
@@ -164,16 +167,16 @@ inline int32 copyRequestHeader(const Request& request, bool success, byte* data)
 
 Bytes newResponse(const Request& request, bool success, bool verdict, int32 dataSize, const byte* data)
 {
-    int32 headerSize = sizeof(int32) // total size
-        + sizeof(byte) // magic byte
-        + sizeof(byte) // protocol
+    int32 headerSize = SIZEOF_INT32 // total size
+        + SIZEOF_BYTE // magic byte
+        + SIZEOF_BYTE // protocol
         + sizeof(RequestId) // request id
-        + sizeof(byte) // success
+        + SIZEOF_BYTE // success
     ;
 
     int32 byteCount = headerSize + (success
         ? 1 + (request.type == GET && verdict
-            ? sizeof(int32) + dataSize
+            ? SIZEOF_INT32 + dataSize
             : 0
         )
         : 0

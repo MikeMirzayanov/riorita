@@ -105,7 +105,7 @@ struct FilesStorage: public Storage
         int size = int(boost::filesystem::file_size(fileName));
 
         char* bytes = new char[size + 1];
-        int done = fread(bytes, 1, size, f);
+        int done = int(fread(bytes, 1, size, f));
         if (done != size)
         {
             delete[] bytes;
