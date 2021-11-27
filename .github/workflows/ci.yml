@@ -44,4 +44,5 @@ jobs:
           distribution: "adopt"
       - name: Deploy
         run: |
+          cd java/riorita
           mvn --batch-mode deploy -DskipTests
