@@ -177,15 +177,7 @@ public class Main {
         private static ThreadLocal<Riorita> riorita = new ThreadLocal<Riorita>() {
             @Override
             protected Riorita initialValue() {
-                try {
-                    return new Riorita(RIORITA_HOST, RIORITA_PORT);
-                } catch (IOException e) {
-                    System.out.println("Unexpected error: " + e.getMessage());
-                    System.out.flush();
-                    System.exit(1);
-                }
-
-                return null;
+                return new Riorita(RIORITA_HOST, RIORITA_PORT);
             }
         };
     }
