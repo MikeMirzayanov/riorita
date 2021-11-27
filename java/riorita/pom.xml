@@ -30,6 +30,14 @@
         </developer>
     </developers>
 
+    <distributionManagement>
+        <repository>
+            <id>github</id>
+            <name>GitHub Packages</name>
+            <url>https://maven.pkg.github.com/MikeMirzayanov/riorita</url>
+        </repository>
+    </distributionManagement>
+
     <issueManagement>
         <url>https://github.com/MikeMirzayanov/riorita/issues</url>
         <system>GitHub Issues</system>
