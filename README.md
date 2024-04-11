@@ -1,15 +1,17 @@
 # [Riorita](https://github.com/MikeMirzayanov/riorita)
 
-Simple C++-server to store byte-arrays by key, uses leveldb as a backend
+Simple C++-server to store byte arrays by key, uses leveldb as a backend
 
 It is written using C++ on the top of boost::asio::io_service. Also contains Java client implementation.
 
+On Ubuntu you can install requirements with `apt install g++ libsnappy-dev libleveldb-dev librocksdb-dev libboost-all-dev`
+
 ## Protocol
 
-Riorita uses very simple binary request-response protocol. It supports keep-alive out-of-the box, a client should connect to the
-server via TCP and send requests. The client receives response after each request.
+Riorita uses a very simple binary request-response protocol. It supports keep-alive out-of-the-box, a client should connect to the
+server via TCP and send requests. The client receives a response after each request.
 
-Server closes connection on any error, client can reopen connection.
+The server closes a connection on any error, a client can reopen a connection.
 
 Protocol uses LITTLE_ENDIAN byte order.
 
