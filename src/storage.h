@@ -15,9 +15,13 @@ enum StorageType
     ILLEGAL_STORAGE_TYPE,
     MEMORY,
     FILES,
+#ifdef HAS_LEVELDB
     LEVELDB,
-    COMPACT,
-    ROCKSDB
+#endif
+#ifdef HAS_ROCKSDB
+    ROCKSDB,
+#endif
+    COMPACT
 };
 
 struct Storage

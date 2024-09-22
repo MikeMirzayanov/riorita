@@ -28,7 +28,7 @@ RUN apk update && apk add --no-cache valgrind
 
 RUN mkdir /src
 COPY *.cpp *.h /src/
-RUN cd /src && g++ -std=c++20 -Wall -Wextra -Wconversion -DHAS_ROCKSDB -DHAS_LEVELDB -Ofast -o riorita riorita.cpp protocol.cpp compact.cpp storage.cpp cache.cpp -lboost_system -lboost_thread -lboost_filesystem -lboost_program_options -lpthread -lleveldb -lsnappy -lrocksdb
+RUN cd /src && g++ -std=c++20 -Wall -Wextra -Wconversion -Ofast -o riorita riorita.cpp protocol.cpp compact.cpp storage.cpp cache.cpp -lboost_system -lboost_thread -lboost_filesystem -lboost_program_options -lpthread -lleveldb -lsnappy -lrocksdb
 
 RUN mkdir /riorita
 WORKDIR /riorita

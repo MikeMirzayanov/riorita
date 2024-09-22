@@ -16,7 +16,7 @@
 #endif
 
 #ifdef HAS_ROCKSDB
-#include <rocksdb/db.h>
+#   include <rocksdb/db.h>
 #endif
 
 using namespace riorita;
@@ -32,14 +32,19 @@ StorageType getType(const string& typeName)
     if (typeName == "files" || typeName == "FILES")
         return FILES;
 
+
+#ifdef HAS_LEVELDB
     if (typeName == "leveldb" || typeName == "LEVELDB")
         return LEVELDB;
+#endif
 
     if (typeName == "compact" || typeName == "COMPACT")
         return COMPACT;
 
+#ifdef HAS_ROCKSDB
     if (typeName == "rocksdb" || typeName == "ROCKSDB")
         return ROCKSDB;
+#endif
 
     return ILLEGAL_STORAGE_TYPE;
 }
@@ -52,12 +57,16 @@ string getTypeName(const StorageType& type)
             return "memory";
         case FILES:
             return "files";
-        case LEVELDB:
-            return "leveldb";
-        case COMPACT:
-            return "compact";
+#ifdef HAS_ROCKSDB
         case ROCKSDB:
             return "rocksdb";
+#endif
+#ifdef HAS_LEVELDB
+        case LEVELDB:
+            return "leveldb";
+#endif
+        case COMPACT:
+            return "compact";
         default:
             return "illegal_storage_type";
     }
