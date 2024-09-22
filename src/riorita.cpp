@@ -43,7 +43,7 @@ static long long currentTimeMillis()
     return (long long)(double(clock()) / CLOCKS_PER_SEC * 1000.0 + 0.5);
 }
 
-static uint32_t string_address_to_uint32_t(const std::string& ip, bool& error)
+static uint32_t string_address_to_uint32_t(const string& ip, bool& error)
 {
     error = true;
     
@@ -66,7 +66,7 @@ static uint32_t string_address_to_uint32_t(const std::string& ip, bool& error)
     return result;
 }
 
-static bool string_address_matches(const std::string& ip, std::string network)
+static bool string_address_matches(const string& ip, string network)
 {
     if (network.find("/") == string::npos)
         network += "/32";
@@ -197,7 +197,7 @@ public:
 
     void start(const vector<string>& allowed_remote_addrs)
     {
-        remoteAddr = boost::lexical_cast<std::string>(_socket.remote_endpoint());
+        remoteAddr = boost::lexical_cast<string>(_socket.remote_endpoint());
         *lout << "Testing connection " << remoteAddr << endl;
 
         bool allowed = false;
@@ -206,6 +206,10 @@ public:
             {
                 *lout << "Connection " << remoteAddr << " matches " << allowed_remote_addrs[i] << endl;
                 allowed = true;
+            }
+            else
+            {
+                *lout << "Connection " << remoteAddr << " mismatched " << allowed_remote_addrs[i] << endl;
             }
 
         if (allowed)
@@ -237,7 +241,7 @@ public:
         }
     }
 
-    void handleRead(const boost::system::error_code& error, std::size_t bytes_transferred)
+    void handleRead(const boost::system::error_code& error, size_t bytes_transferred)
     {
         if (!error && bytes_transferred == sizeof(requestBytes.size)
                 && requestBytes.size >= MIN_VALID_REQUEST_SIZE
@@ -272,7 +276,7 @@ public:
         }
     }
 
-    void handleRequest(const boost::system::error_code& error, std::size_t bytes_transferred)
+    void handleRequest(const boost::system::error_code& error, size_t bytes_transferred)
     {
         if (!error && riorita::int32(bytes_transferred) == requestBytes.size)
         {
@@ -325,9 +329,9 @@ public:
         }
     }
 
-    void handleEnd(const boost::system::error_code& error, std::size_t bytes_transferred)
+    void handleEnd(const boost::system::error_code& error, size_t bytes_transferred)
     {
-        std::size_t responseSize = response.size;
+        size_t responseSize = response.size;
 
         requestBytes.reset();
         response.reset();
@@ -415,7 +419,7 @@ private:
 };
 
 typedef boost::shared_ptr<RioritaServer> RioritaServerPtr;
-typedef std::list<RioritaServerPtr> RioritaServerList;
+typedef list<RioritaServerPtr> RioritaServerList;
 
 //----------------------------------------------------------------------
 
@@ -429,9 +433,11 @@ void init(const string& logFile, const string& dataDir, riorita::StorageType sto
     storage = boost::shared_ptr<riorita::Storage>(riorita::newStorage(storageType, opts));
     if (null == storage)
     {
-        std::cerr << "Can't initialize storage" << std::endl;
+        cerr << "Can't initialize storage" << endl;
         exit(1);
     }
+
+    *lout << "Created storage {type=" << getTypeName(storage->type) << "}" << endl;
 }
 
 #ifdef HAS_ROCKSDB
@@ -443,6 +449,45 @@ void init(const string& logFile, const string& dataDir, riorita::StorageType sto
 #endif
 
 boost::asio::io_service io_service(4);
+
+size_t convertSize(const string& fieldName, const string& sizeStr)
+{
+    if (sizeStr.empty())
+    {
+        throw invalid_argument("Empty size [field='" + fieldName + "', str='" + sizeStr + "']");
+    }
+
+    size_t i = 0;
+    while (i < sizeStr.size() && isdigit(sizeStr[i]))
+    {
+        i++;
+    }
+
+    if ((i == sizeStr.length() || i + 1 == sizeStr.length()) && i > 0)
+    {
+        size_t value = size_t(stoull(sizeStr.substr(0, i)));
+        char suffix = i == sizeStr.length() ? '\0' : char(tolower(sizeStr[i]));
+
+        switch (suffix)
+        {
+            case '\0': // Bytes
+                return value;
+            case 'k': // Kilobytes
+                return value * 1024;
+            case 'm': // Megabytes
+                return value * 1024 * 1024;
+            case 'g': // Gigabytes
+                return value * 1024 * 1024 * 1024;
+            default:
+                throw invalid_argument("Invalid size [field='" + fieldName + "', str='" + sizeStr + "']");
+        }
+    }
+    else
+    {
+        throw invalid_argument("Invalid size [field='" + fieldName + "', str='" + sizeStr + "']");
+    }
+}
+
 
 int main(int argc, char* argv[])
 {
@@ -456,6 +501,9 @@ int main(int argc, char* argv[])
         string dataDir;
         string backend;
 
+        string maxCacheEntrySize;
+        string maxCacheSize; 
+
         description.add_options()
             ("help", "Help message")
             ("log", po::value<string>(&logFile)->default_value("riorita.log"), "Log file")
@@ -463,6 +511,8 @@ int main(int argc, char* argv[])
             ("backend", po::value<string>(&backend)->default_value(DEFAULT_BACKEND), "Backend: rocksdb, leveldb, files, compact or memory")
             ("port", po::value<int>(&port)->default_value(8024), "Port")
             ("allowed", po::value<string>(&allowedRemoteAddrs)->default_value("0.0.0.0;127.0.0.1"), "Allows remote addresses: example '212.193.32.0/19;0.0.0.0;127.0.0.1'")
+            ("maxCacheEntrySize", po::value<string>(&maxCacheEntrySize)->default_value(to_string(riorita::Cache::MAX_CACHE_ENTRY_SIZE)), "Max size of inmemory cache entry: example '16M'")
+            ("maxCacheSize", po::value<string>(&maxCacheSize)->default_value(to_string(riorita::Cache::MAX_CACHE_SIZE)), "Max total size of inmemory cache: example '16G'")
         ;
 
         po::variables_map varmap;
@@ -471,18 +521,27 @@ int main(int argc, char* argv[])
         
         if (varmap.count("help"))
         {
-            std::cout << description << std::endl;
+            cout << description << endl;
             return 1;
         }
+
+        riorita::Cache::MAX_CACHE_ENTRY_SIZE = convertSize("maxCacheEntrySize", maxCacheEntrySize);
+        riorita::Cache::MAX_CACHE_SIZE = convertSize("maxCacheSize", maxCacheSize);
 
         riorita::StorageType type = riorita::getType(backend);
         if (type == riorita::ILLEGAL_STORAGE_TYPE)
         {
-            std::cout << description << std::endl;
+            cout << description << endl;
             return 1;
         }
 
         init(logFile, dataDir, type);
+        *lout << "Inmemory cache setup {maxCacheEntrySize="
+            << riorita::Cache::MAX_CACHE_ENTRY_SIZE
+            << ", maxCacheSize="
+            << riorita::Cache::MAX_CACHE_SIZE
+            << "}"
+            << endl;
     }
 
     *lout << "Starting riorita server" << endl;
@@ -508,8 +567,8 @@ int main(int argc, char* argv[])
 
         *lout << "Started riorita server" << endl;
     
-        std::vector<boost::shared_ptr<boost::thread> > threads;
-        for (std::size_t i = 0; i < 4; ++i)
+        vector<boost::shared_ptr<boost::thread> > threads;
+        for (size_t i = 0; i < 4; ++i)
         {
           boost::shared_ptr<boost::thread> thread(new boost::thread(
                 boost::bind(&boost::asio::io_service::run, &io_service)));
@@ -518,19 +577,19 @@ int main(int argc, char* argv[])
 
         // io_service.run();
         
-        for (std::size_t i = 0; i < threads.size(); ++i)
+        for (size_t i = 0; i < threads.size(); ++i)
           threads[i]->join();
     }
-    catch (std::exception& e)
+    catch (exception& e)
     {
         *lout << "Exception: " << e.what() << endl;
-        std::cerr << "Exception: " << e.what() << endl;
+        cerr << "Exception: " << e.what() << endl;
         return 1;
     }
     catch(...)
     {
         *lout << "Unexpected exception" << endl;
-        std::cerr << "Unexpected exception" << endl;
+        cerr << "Unexpected exception" << endl;
         return 1;
     }
 

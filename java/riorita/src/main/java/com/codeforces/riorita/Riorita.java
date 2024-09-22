@@ -8,6 +8,7 @@ import java.net.Socket;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -34,7 +35,7 @@ public class Riorita {
     private final String hostAndPort;
     private String keyPrefix = "";
     private final boolean reconnect;
-    private AtomicInteger connectionOperationCount = new AtomicInteger();
+    private final AtomicInteger connectionOperationCount = new AtomicInteger();
 
     public Riorita(String host, int port) {
         this(host, port, true);
@@ -160,7 +161,7 @@ public class Riorita {
                             logger.warn("Can't process operation.", e);
                             exception = e;
                             try {
-                                Thread.sleep(iteration * 100);
+                                Thread.sleep(iteration * 100L);
                             } catch (InterruptedException ignored) {
                                 // No operations.
                             }
@@ -168,7 +169,7 @@ public class Riorita {
                         }
                     } else {
                         try {
-                            Thread.sleep(iteration * 100);
+                            Thread.sleep(iteration * 100L);
                         } catch (InterruptedException ignored) {
                             // No operations.
                         }
@@ -266,11 +267,7 @@ public class Riorita {
     }
 
     private byte[] getStringBytes(String s) {
-        try {
-            return s.getBytes("UTF-8");
-        } catch (UnsupportedEncodingException e) {
-            throw new RuntimeException("Can't find UTF-8 {" + this + "}.");
-        }
+        return s.getBytes(StandardCharsets.UTF_8);
     }
 
     @SuppressWarnings("unused")

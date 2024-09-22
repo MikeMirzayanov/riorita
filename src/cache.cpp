@@ -6,6 +6,9 @@ using namespace riorita;
 
 Logger logger("/opt/riorita/cache.log");
 
+size_t Cache::MAX_CACHE_ENTRY_SIZE = size_t(256) * 1024 * 1024;
+size_t Cache::MAX_CACHE_SIZE = size_t(16) * 1024 * 1024 * 1024;
+
 void Cache::renewTimestamp(const std::string& key)
 {
     size_t keyTimestamp = timestampsByKey[key];

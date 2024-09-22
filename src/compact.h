@@ -41,9 +41,9 @@ private:
 
     std::vector<int> indices;
     std::vector<int> offsets;
-    boost::ptr_vector<boost::mutex> mutexes;
+    boost::ptr_vector<boost::shared_mutex> mutexes;
     
-    boost::mutex mutex;
+    boost::shared_mutex mutex;
 };
 
 }

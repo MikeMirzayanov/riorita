@@ -39,16 +39,35 @@ StorageType getType(const string& typeName)
         return COMPACT;
 
     if (typeName == "rocksdb" || typeName == "ROCKSDB")
-        return LEVELDB;
+        return ROCKSDB;
 
     return ILLEGAL_STORAGE_TYPE;
+}
+
+string getTypeName(const StorageType& type)
+{
+    switch(type)
+    {
+        case MEMORY:
+            return "memory";
+        case FILES:
+            return "files";
+        case LEVELDB:
+            return "leveldb";
+        case COMPACT:
+            return "compact";
+        case ROCKSDB:
+            return "rocksdb";
+        default:
+            return "illegal_storage_type";
+    }
 }
 
 struct MemoryStorage: public Storage
 {
     MemoryStorage(const StorageOptions& options)
     {
-        // No operations.
+        (void) options;
     }
 
     bool has(const string& key)
@@ -307,25 +326,37 @@ private:
 
 Storage* newStorage(StorageType type, const StorageOptions& options)
 {
-
+    Storage* result = 0;
     switch (type) {
       case MEMORY:
-        return new MemoryStorage(options);
+        result = new MemoryStorage(options);
+        break;
       case FILES:
-        return new FilesStorage(options);
+        result = new FilesStorage(options);
+        break;
 #ifdef HAS_LEVELDB
       case LEVELDB:
-        return new LevelDbStorage(options);
+        result = new LevelDbStorage(options);
 #endif
+        break;
       case COMPACT:
-        return new CompactStorage(options);
+        result = new CompactStorage(options);
 #ifdef HAS_ROCKSDB
+        break;
       case ROCKSDB:
-        return new RocksDBStorage(options);
+        result = new RocksDBStorage(options);
 #endif
+        break;
+      case ILLEGAL_STORAGE_TYPE:
+        break;
     }
 
-    return 0;
+    if (result)
+    {
+        result->type = type;
+    }
+
+    return result;
 }
 
 }

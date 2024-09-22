@@ -8,9 +8,6 @@ namespace riorita {
 
 class Cache {
 private:
-    const size_t MAX_CACHE_ENTRY_SIZE = size_t(16) * 1024 * 1024;
-    const size_t MAX_CACHE_SIZE = size_t(16) * 1024 * 1024 * 1024;
-
     std::mutex lock;
     size_t timestamp = 0;
     size_t size = 0;
@@ -22,6 +19,9 @@ private:
     void removeOutdated();
 
 public:
+    static size_t MAX_CACHE_ENTRY_SIZE;
+    static size_t MAX_CACHE_SIZE;
+
     bool has(const std::string& key);
     bool get(const std::string& key, std::string& value);
     void put(const std::string& key, const std::string& value);

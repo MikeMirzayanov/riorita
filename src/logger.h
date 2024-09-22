@@ -6,6 +6,7 @@
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/date_time/posix_time/posix_time_io.hpp>
 #include <boost/thread/mutex.hpp>
+#include <cstdlib>
 
 namespace riorita {
 
@@ -38,6 +39,20 @@ public:
         return *this;
     }
 
+    // Fatal logging function
+    template<typename T>
+    void fatal(const T& message)
+    {
+        // Log the fatal message
+        boost::unique_lock<boost::mutex> scoped_lock(mutex);
+        if (newLine)
+            ofs << boost::posix_time::microsec_clock::local_time() << ": ",
+            newLine = false;
+        ofs << "FATAL: " << message << std::endl;
+        ofs.flush();
+        std::exit(1);  // Exit the program with code 1
+    }
+    
     ~Logger()
     {
         ofs.close();

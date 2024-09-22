@@ -1,4 +1,5 @@
 #include "compact.h"
+#include "logger.h"
 
 #include <cstdio>
 #include <cstring>
@@ -17,20 +18,22 @@ const int DATA_FILE_SIZE = 1024 * 1024 * 1024;
 const int MAX_DATA_FILE_NAME_LENGTH = 64;
 const int SIZEOF_INT = int(sizeof(int));
 
+extern boost::shared_ptr<riorita::Logger> lout;
+
 static int getGroupByName(const string& name, int groups)
 {
-    int result = 0;
+    size_t result = 0;
     for (size_t i = 0; i < name.length(); i++)
-        result = (result * 1009 + int(int(name[i]) + 255)) % 1062599;
-    return result % groups;
+        result = (result * 977 + size_t(name[i] + 255));
+    return int(result % groups);
 }
 
 static int fingerprint(const char* c, int size)
 {
-    int result = 0;
+    size_t result = 0;
     for (int i = 0; i < size; i++)
-        result = result * 97 + int(int(c[i]) + 255);
-    return result;
+        result = result * 977 + size_t(c[i] + 255);
+    return int(result % 2147483647);
 }
 
 static string concatPath(const string& dir, const string& child)
@@ -50,6 +53,8 @@ FileSystemCompactStorage::FileSystemCompactStorage(const string& dir, int groups
     mutexes.resize(groups);
 
     readIndexFile();
+
+    *lout << "Initialized FileSystemCompactStorage{dir=" << dir << ", groups=" << groups << "}" << endl;
 }
 
 static bool isErased(const Position& position)
@@ -60,22 +65,29 @@ static bool isErased(const Position& position)
 
 bool FileSystemCompactStorage::has(const string& name)
 {
-    boost::unique_lock<boost::mutex> scoped_lock(mutex);
+    boost::unique_lock<boost::shared_mutex> scoped_lock(mutex);
 
-    return positionByName.count(name)
-        && !isErased(positionByName[name]);
+    auto it = positionByName.find(name);
+    return it != positionByName.end() && !isErased(it->second);
 }
 
 void FileSystemCompactStorage::erase(const string& name)
 {
-    boost::unique_lock<boost::mutex> scoped_lock(mutex);
-    
-    if (has(name))
+    Position position;
+
     {
-        Position position = {0, 0, 0, 0, 1};
+        // Only lock until positionByName is updated
+        boost::unique_lock<boost::shared_mutex> scoped_lock(mutex);
+
+        auto it = positionByName.find(name);
+        if (it == positionByName.end() || isErased(it->second))
+            return;
+
+        position = {0, 0, 0, 0, 1};  // Mark as erased
         positionByName[name] = position;
-        appendNameAndPosition(name, position);
     }
+
+    appendNameAndPosition(name, position);  // Perform I/O after unlocking
 }
 
 bool FileSystemCompactStorage::get(const string& name, string& data)
@@ -85,9 +97,10 @@ bool FileSystemCompactStorage::get(const string& name, string& data)
     bool result = false;
 
     {
-        boost::unique_lock<boost::mutex> scoped_lock(mutex);
-        if (positionByName.count(name))
-            position = positionByName[name];
+        boost::shared_lock<boost::shared_mutex> scoped_lock(mutex); // Read lock
+        auto it = positionByName.find(name);
+        if (it != positionByName.end())
+            position = it->second;
     }
 
     if (isErased(position))
@@ -100,8 +113,9 @@ bool FileSystemCompactStorage::get(const string& name, string& data)
     char* bytes = 0;
 
     {
-        boost::unique_lock<boost::mutex> scoped_lock(mutexes[position.group]);
-        FILE* f = fopen(concatPath(dir, concatPath(groupName, fileName)).c_str(), "rb");
+        boost::unique_lock<boost::shared_mutex> scoped_lock(mutexes[position.group]);
+        auto filePath = concatPath(dir, concatPath(groupName, fileName));
+        FILE* f = fopen(filePath.c_str(), "rb");
         if (0 != f)
         {
             if (0 == fseek(f, position.offset, SEEK_SET))
@@ -109,14 +123,20 @@ bool FileSystemCompactStorage::get(const string& name, string& data)
                 bytes = new char[position.length + SIZEOF_INT];
                 result = (position.length + SIZEOF_INT == int(fread(bytes, 1, position.length + SIZEOF_INT, f)));
                 if (!result)
+                {
                     printf("Broken fread\n");
+                    lout->fatal("Can't fread file '" + filePath + "'");
+                }
             }
             else
                 printf("Can't seek\n");
             fclose(f);
         }
         else
-            printf("f == 0\n");
+        {
+            printf("f == 0 [filePath=%s]\n", filePath.c_str());
+            lout->fatal("Can't fopen file '" + filePath + "'");
+        }
     }
 
     if (result)
@@ -175,9 +195,11 @@ void FileSystemCompactStorage::put(int group, int index, const string& data, int
 void FileSystemCompactStorage::put(const string& name, const string& data)
 {
     int group = getGroupByName(name, groups);
+    int fp = fingerprint(data.c_str(), int(data.length()));
 
     {
-        boost::unique_lock<boost::mutex> scoped_lock(mutexes[group]);
+        boost::unique_lock<boost::shared_mutex> global_lock(mutex);
+        boost::unique_lock<boost::shared_mutex> group_lock(mutexes[group]);
         
         if (offsets[group] + int(data.length() + SIZEOF_INT) >= DATA_FILE_SIZE)
         {
@@ -185,16 +207,12 @@ void FileSystemCompactStorage::put(const string& name, const string& data)
             offsets[group] = 0;
             prepareDataFile(group, indices[group]);
         }
-
-        int fp = fingerprint(data.c_str(), int(data.length()));
+        
         Position position = {group, indices[group], offsets[group], int(data.length()), fp};
         put(group, indices[group], data, fp);
         
-        {
-            boost::unique_lock<boost::mutex> scoped_lock(mutex);
-            positionByName[name] = position;
-            appendNameAndPosition(name, position);
-        }
+        positionByName[name] = position;
+        appendNameAndPosition(name, position);
         
         offsets[group] += int(data.length()) + SIZEOF_INT;
     }
@@ -220,7 +238,14 @@ void FileSystemCompactStorage::appendNameAndPosition(const string& name, const P
 
 void FileSystemCompactStorage::readIndexFile()
 {
-    boost::unique_lock<boost::mutex> scoped_lock(mutex);
+    boost::unique_lock<boost::shared_mutex> scoped_lock(mutex);
+
+    // Lock all group-specific mutexes to ensure no race conditions on group data
+    std::vector<boost::unique_lock<boost::shared_mutex>> group_locks;
+    for (auto& group_mutex : mutexes)
+    {
+        group_locks.emplace_back(group_mutex);  // Lock each group's mutex
+    }
 
     string indexFile = concatPath(dir, INDEX_FILE);
     FILE* indexFilePtr = fopen(indexFile.c_str(), "rb");
@@ -279,4 +304,6 @@ void FileSystemCompactStorage::readIndexFile()
 
         fclose(indexFilePtr);
     }
+
+    *lout << "Read index file [count=" << positionByName.size() << "]" << endl;
 }   
