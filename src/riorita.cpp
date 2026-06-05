@@ -31,6 +31,8 @@ using namespace std;
 const riorita::int32 MIN_VALID_REQUEST_SIZE = 15;
 const riorita::int32 MAX_VALID_REQUEST_SIZE = 1073741824;
 const size_t IO_THREAD_COUNT = 12;
+const string RIORITA_VERSION = "1.1";
+const string RIORITA_BUILD_TIME = __DATE__ " " __TIME__;
 
 class Session;
 typedef boost::shared_ptr<Session> SessionPtr;
@@ -613,7 +615,9 @@ int main(int argc, char* argv[])
         signals_.async_wait(boost::bind(&boost::asio::io_service::stop, &io_service));
 
 
-        *lout << "Started riorita server" << endl;
+        *lout << "Started riorita server {version=" << RIORITA_VERSION
+            << ", buildTime=" << RIORITA_BUILD_TIME
+            << "}" << endl;
         *lout << "IO service setup {threadCount=" << IO_THREAD_COUNT << "}" << endl;
         *lout << std::flush;
     
