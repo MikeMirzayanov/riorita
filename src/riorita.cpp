@@ -10,6 +10,7 @@
 #include <iostream>
 #include <list>
 #include <ctime>
+#include <chrono>
 #include <map>
 #include <set>
 
@@ -40,7 +41,8 @@ boost::shared_ptr<riorita::Storage> storage;
 
 static long long currentTimeMillis()
 {
-    return (long long)(double(clock()) / CLOCKS_PER_SEC * 1000.0 + 0.5);
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
 static uint32_t string_address_to_uint32_t(const string& ip, bool& error)
