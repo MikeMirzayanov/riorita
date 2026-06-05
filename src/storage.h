@@ -10,27 +10,33 @@ struct StorageOptions
     std::string directory;    
 };
 
+enum StorageType
+{
+    ILLEGAL_STORAGE_TYPE,
+    MEMORY,
+    FILES,
+#ifdef HAS_LEVELDB
+    LEVELDB,
+#endif
+#ifdef HAS_ROCKSDB
+    ROCKSDB,
+#endif
+    COMPACT
+};
+
 struct Storage
 {
+    StorageType type;
     virtual bool has(const std::string& key) = 0;
     virtual bool get(const std::string& key, std::string& value) = 0;
     virtual void erase(const std::string& key) = 0;
     virtual void put(const std::string& key, const std::string& value) = 0;
 };
 
-enum StorageType
-{
-    ILLEGAL_STORAGE_TYPE,
-    MEMORY,
-    FILES,
-    LEVELDB,
-    COMPACT,
-    ROCKSDB
-};
-
 Storage* newStorage(StorageType type, const StorageOptions& options);
 
 StorageType getType(const std::string& typeName);
+std::string getTypeName(const StorageType& type);
 
 }
 
