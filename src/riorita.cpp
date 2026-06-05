@@ -38,11 +38,18 @@ set<SessionPtr> sessions;
 riorita::Cache cache;
 boost::shared_ptr<riorita::Logger> lout;
 boost::shared_ptr<riorita::Storage> storage;
+bool verboseRequests = false;
+long long slowRequestThresholdMillis = 100;
 
 static long long currentTimeMillis()
 {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+static bool shouldLogRequest(long long elapsedMillis)
+{
+    return verboseRequests || elapsedMillis >= slowRequestThresholdMillis;
 }
 
 static uint32_t string_address_to_uint32_t(const string& ip, bool& error)
@@ -109,12 +116,13 @@ riorita::Bytes processRequest(const string& remoteAddr, const riorita::Request& 
     {
         if (cache.has(key))
         {
-           *lout
-                << "From cache: " << riorita::toChars(request.type)
-                << " in " << (currentTimeMillis() - startTimeMillis) << " ms,"
-                << " returns success=" << success << ", verdict=" << verdict
-                << " [" << remoteAddr << ", id=" << request.id << "]"
-                << endl;
+            if (verboseRequests)
+                *lout
+                    << "From cache: " << riorita::toChars(request.type)
+                    << " in " << (currentTimeMillis() - startTimeMillis) << " ms,"
+                    << " returns success=" << success << ", verdict=" << verdict
+                    << " [" << remoteAddr << ", id=" << request.id << "]"
+                    << endl;
             verdict = true;
         }
         else
@@ -125,12 +133,13 @@ riorita::Bytes processRequest(const string& remoteAddr, const riorita::Request& 
     {
         if (cache.get(key, data))
         {
-           *lout
-                << "From cache: " << riorita::toChars(request.type)
-                << " in " << (currentTimeMillis() - startTimeMillis) << " ms,"
-                << " returns success=" << success << ", verdict=" << verdict << ", size=" << data.length()
-                << " [" << remoteAddr << ", id=" << request.id << "]"
-                << endl;
+            if (verboseRequests)
+                *lout
+                    << "From cache: " << riorita::toChars(request.type)
+                    << " in " << (currentTimeMillis() - startTimeMillis) << " ms,"
+                    << " returns success=" << success << ", verdict=" << verdict << ", size=" << data.length()
+                    << " [" << remoteAddr << ", id=" << request.id << "]"
+                    << endl;
             verdict = true;
         }
         else
@@ -154,13 +163,15 @@ riorita::Bytes processRequest(const string& remoteAddr, const riorita::Request& 
     }
 
     int size = max(int(data.length()), int(request.value.size));
+    long long elapsedMillis = currentTimeMillis() - startTimeMillis;
 
-    *lout
-         << "Processed " << riorita::toChars(request.type)
-         << " in " << (currentTimeMillis() - startTimeMillis) << " ms,"
-         << " returns success=" << success << ", verdict=" << verdict << ", size=" << size
-         << " [" << remoteAddr << ", id=" << request.id << "]"
-         << endl;
+    if (shouldLogRequest(elapsedMillis))
+        *lout
+            << "Processed " << riorita::toChars(request.type)
+            << " in " << elapsedMillis << " ms,"
+            << " returns success=" << success << ", verdict=" << verdict << ", size=" << size
+            << " [" << remoteAddr << ", id=" << request.id << "]"
+            << endl;
 
     return newResponse(request, success, verdict,
             static_cast<riorita::int32>(data.length()),
@@ -253,10 +264,11 @@ public:
 
             long long startTimeMillis = currentTimeMillis();
             requestBytes.data = new riorita::byte[requestBytes.size];
-            *lout
-                 << "New bytes in " << (currentTimeMillis() - startTimeMillis) << " ms"
-                 << ", size=" << requestBytes.size
-                 << endl;
+            if (verboseRequests)
+                *lout
+                     << "New bytes in " << (currentTimeMillis() - startTimeMillis) << " ms"
+                     << ", size=" << requestBytes.size
+                     << endl;
 
             boost::asio::async_read(
                 _socket,
@@ -286,23 +298,25 @@ public:
 
             long long startTimeMillis = currentTimeMillis();
             request = parseRequest(requestBytes, 0, parsedByteCount);
-            *lout
-                 << "Parsed " << riorita::toChars(request->type)
-                 << " in " << (currentTimeMillis() - startTimeMillis) << " ms"
-                 << ", size=" << requestBytes.size
-                 << " [" << remoteAddr << ", id=" << request->id << "]"
-                 << endl;
+            if (verboseRequests && request != null)
+                *lout
+                     << "Parsed " << riorita::toChars(request->type)
+                     << " in " << (currentTimeMillis() - startTimeMillis) << " ms"
+                     << ", size=" << requestBytes.size
+                     << " [" << remoteAddr << ", id=" << request->id << "]"
+                     << endl;
 
             if (request != null && parsedByteCount == requestBytes.size)
             {
                 response = processRequest(remoteAddr, *request);
 
-                *lout
-                     << "Ready to async_write " << riorita::toChars(request->type)
-                     << " in " << (currentTimeMillis() - startTimeMillis) << " ms"
-                     << ", size=" << requestBytes.size
-                     << " [" << remoteAddr << ", id=" << request->id << "]"
-                     << endl;
+                if (verboseRequests)
+                    *lout
+                         << "Ready to async_write " << riorita::toChars(request->type)
+                         << " in " << (currentTimeMillis() - startTimeMillis) << " ms"
+                         << ", size=" << requestBytes.size
+                         << " [" << remoteAddr << ", id=" << request->id << "]"
+                         << endl;
 
                 boost::asio::async_write(
                     _socket,
@@ -515,6 +529,8 @@ int main(int argc, char* argv[])
             ("allowed", po::value<string>(&allowedRemoteAddrs)->default_value("0.0.0.0;127.0.0.1"), "Allows remote addresses: example '212.193.32.0/19;0.0.0.0;127.0.0.1'")
             ("maxCacheEntrySize", po::value<string>(&maxCacheEntrySize)->default_value(to_string(riorita::Cache::MAX_CACHE_ENTRY_SIZE)), "Max size of inmemory cache entry: example '16M'")
             ("maxCacheSize", po::value<string>(&maxCacheSize)->default_value(to_string(riorita::Cache::MAX_CACHE_SIZE)), "Max total size of inmemory cache: example '16G'")
+            ("verboseRequests", po::bool_switch(&verboseRequests)->default_value(false), "Log every request processing step")
+            ("slowRequestThresholdMillis", po::value<long long>(&slowRequestThresholdMillis)->default_value(slowRequestThresholdMillis), "Log processed requests taking at least this many milliseconds")
         ;
 
         po::variables_map varmap;
@@ -529,6 +545,11 @@ int main(int argc, char* argv[])
 
         riorita::Cache::MAX_CACHE_ENTRY_SIZE = convertSize("maxCacheEntrySize", maxCacheEntrySize);
         riorita::Cache::MAX_CACHE_SIZE = convertSize("maxCacheSize", maxCacheSize);
+        if (slowRequestThresholdMillis < 0)
+        {
+            cerr << "slowRequestThresholdMillis must be non-negative" << endl;
+            return 1;
+        }
 
         riorita::StorageType type = riorita::getType(backend);
         if (type == riorita::ILLEGAL_STORAGE_TYPE)
@@ -542,6 +563,12 @@ int main(int argc, char* argv[])
             << riorita::Cache::MAX_CACHE_ENTRY_SIZE
             << ", maxCacheSize="
             << riorita::Cache::MAX_CACHE_SIZE
+            << "}"
+            << endl;
+        *lout << "Request logging setup {verboseRequests="
+            << verboseRequests
+            << ", slowRequestThresholdMillis="
+            << slowRequestThresholdMillis
             << "}"
             << endl;
     }
