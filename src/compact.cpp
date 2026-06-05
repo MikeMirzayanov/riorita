@@ -65,7 +65,7 @@ static bool isErased(const Position& position)
 
 bool FileSystemCompactStorage::has(const string& name)
 {
-    boost::unique_lock<boost::shared_mutex> scoped_lock(mutex);
+    boost::shared_lock<boost::shared_mutex> scoped_lock(mutex);
 
     auto it = positionByName.find(name);
     return it != positionByName.end() && !isErased(it->second);
