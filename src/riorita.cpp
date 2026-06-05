@@ -30,6 +30,7 @@ using namespace std;
 
 const riorita::int32 MIN_VALID_REQUEST_SIZE = 15;
 const riorita::int32 MAX_VALID_REQUEST_SIZE = 1073741824;
+const size_t IO_THREAD_COUNT = 12;
 
 class Session;
 typedef boost::shared_ptr<Session> SessionPtr;
@@ -476,7 +477,7 @@ void init(const string& logFile, const string& dataDir, riorita::StorageType sto
     const string DEFAULT_BACKEND = "compact";
 #endif
 
-boost::asio::io_service io_service(4);
+boost::asio::io_service io_service(IO_THREAD_COUNT);
 
 size_t convertSize(const string& fieldName, const string& sizeStr)
 {
@@ -613,9 +614,11 @@ int main(int argc, char* argv[])
 
 
         *lout << "Started riorita server" << endl;
+        *lout << "IO service setup {threadCount=" << IO_THREAD_COUNT << "}" << endl;
+        *lout << std::flush;
     
         vector<boost::shared_ptr<boost::thread> > threads;
-        for (size_t i = 0; i < 4; ++i)
+        for (size_t i = 0; i < IO_THREAD_COUNT; ++i)
         {
           boost::shared_ptr<boost::thread> thread(new boost::thread(
                 boost::bind(&boost::asio::io_service::run, &io_service)));

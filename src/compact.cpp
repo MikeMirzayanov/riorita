@@ -154,7 +154,7 @@ bool FileSystemCompactStorage::get(const string& name, string& data)
     char* bytes = 0;
 
     {
-        boost::unique_lock<boost::shared_mutex> scoped_lock(mutexes[position.group]);
+        boost::shared_lock<boost::shared_mutex> scoped_lock(mutexes[position.group]);
         auto filePath = concatPath(dir, concatPath(groupName, fileName));
         FILE* f = fopen(filePath.c_str(), "rb");
         if (0 != f)
