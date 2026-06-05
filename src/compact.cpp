@@ -47,6 +47,45 @@ static string concatPath(const string& dir, const string& child)
 #endif
 }
 
+static string errnoMessage(int errorNumber)
+{
+    if (errorNumber == 0)
+        return "none";
+    static boost::mutex strerrorMutex;
+    boost::unique_lock<boost::mutex> scoped_lock(strerrorMutex);
+    return strerror(errorNumber);
+}
+
+static void logFileOpenError(const string& operation, const string& filePath, int errorNumber)
+{
+    *lout << operation << " failed [file=" << filePath
+        << ", errno=" << errorNumber
+        << ", message=" << errnoMessage(errorNumber)
+        << "]" << endl;
+    *lout << std::flush;
+}
+
+static void logFileWriteError(const string& operation, const string& filePath,
+        size_t expected, size_t written, int errorNumber)
+{
+    *lout << operation << " short write [file=" << filePath
+        << ", expected=" << expected
+        << ", written=" << written
+        << ", errno=" << errorNumber
+        << ", message=" << errnoMessage(errorNumber)
+        << "]" << endl;
+    *lout << std::flush;
+}
+
+static void logFileCloseError(const string& operation, const string& filePath, int errorNumber)
+{
+    *lout << operation << " close failed [file=" << filePath
+        << ", errno=" << errorNumber
+        << ", message=" << errnoMessage(errorNumber)
+        << "]" << endl;
+    *lout << std::flush;
+}
+
 FileSystemCompactStorage::FileSystemCompactStorage(const string& dir, int groups)
         : groups(groups), dir(dir)
 {
@@ -173,9 +212,17 @@ void FileSystemCompactStorage::prepareDataFile(int group, int index)
     char fileName[MAX_DATA_FILE_NAME_LENGTH];
     sprintf(fileName, DATA_FILE_PATTERN.c_str(), index);
     
-    FILE* f = fopen(concatPath(dir, concatPath(groupName, fileName)).c_str(), "wb");
+    string filePath = concatPath(dir, concatPath(groupName, fileName));
+    errno = 0;
+    FILE* f = fopen(filePath.c_str(), "wb");
     if (0 != f)
-        fclose(f);
+    {
+        errno = 0;
+        if (fclose(f) != 0)
+            logFileCloseError("prepareDataFile", filePath, errno);
+    }
+    else
+        logFileOpenError("prepareDataFile", filePath, errno);
 }
 
 void FileSystemCompactStorage::put(int group, int index, const string& data, int fp)
@@ -185,13 +232,27 @@ void FileSystemCompactStorage::put(int group, int index, const string& data, int
     char fileName[MAX_DATA_FILE_NAME_LENGTH];
     sprintf(fileName, DATA_FILE_PATTERN.c_str(), index);
     
-    FILE* f = fopen(concatPath(dir, concatPath(groupName, fileName)).c_str(), "ab");
+    string filePath = concatPath(dir, concatPath(groupName, fileName));
+    errno = 0;
+    FILE* f = fopen(filePath.c_str(), "ab");
     if (0 != f)
     {
-        fwrite(data.c_str(), 1, data.length(), f);
-        fwrite(&fp, 1, SIZEOF_INT, f);
-        fclose(f);
+        errno = 0;
+        size_t dataWritten = fwrite(data.c_str(), 1, data.length(), f);
+        if (dataWritten != data.length())
+            logFileWriteError("put data", filePath, data.length(), dataWritten, errno);
+
+        errno = 0;
+        size_t fingerprintWritten = fwrite(&fp, 1, SIZEOF_INT, f);
+        if (fingerprintWritten != size_t(SIZEOF_INT))
+            logFileWriteError("put fingerprint", filePath, size_t(SIZEOF_INT), fingerprintWritten, errno);
+
+        errno = 0;
+        if (fclose(f) != 0)
+            logFileCloseError("put", filePath, errno);
     }
+    else
+        logFileOpenError("put", filePath, errno);
 }
 
 void FileSystemCompactStorage::put(const string& name, const string& data)
@@ -223,6 +284,7 @@ void FileSystemCompactStorage::put(const string& name, const string& data)
 void FileSystemCompactStorage::appendNameAndPosition(const string& name, const Position& position)
 {
     string indexFile = concatPath(dir, INDEX_FILE);
+    errno = 0;
     FILE* indexFilePtr = fopen(indexFile.c_str(), "a+b");
     if (0 != indexFilePtr)
     {
@@ -232,10 +294,18 @@ void FileSystemCompactStorage::appendNameAndPosition(const string& name, const P
         memcpy(data, &length, SIZEOF_INT);
         memcpy(data + SIZEOF_INT, name.c_str(), name.length());
         memcpy(data + SIZEOF_INT + length, &position, sizeof(Position));
-        fwrite(data, 1, size, indexFilePtr);
+        errno = 0;
+        size_t written = fwrite(data, 1, size_t(size), indexFilePtr);
+        if (written != size_t(size))
+            logFileWriteError("appendNameAndPosition", indexFile, size_t(size), written, errno);
         delete[] data;
+
+        errno = 0;
+        if (fclose(indexFilePtr) != 0)
+            logFileCloseError("appendNameAndPosition", indexFile, errno);
     }
-    fclose(indexFilePtr);
+    else
+        logFileOpenError("appendNameAndPosition", indexFile, errno);
 }
 
 void FileSystemCompactStorage::readIndexFile()
