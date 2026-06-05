@@ -40,6 +40,7 @@ boost::shared_ptr<riorita::Logger> lout;
 boost::shared_ptr<riorita::Storage> storage;
 bool verboseRequests = false;
 long long slowRequestThresholdMillis = 100;
+size_t readThroughCacheMaxEntrySize = size_t(4) * 1024 * 1024;
 
 static long long currentTimeMillis()
 {
@@ -50,6 +51,13 @@ static long long currentTimeMillis()
 static bool shouldLogRequest(long long elapsedMillis)
 {
     return verboseRequests || elapsedMillis >= slowRequestThresholdMillis;
+}
+
+static bool shouldReadThroughCache(const string& key, const string& value)
+{
+    if (key.size() > readThroughCacheMaxEntrySize)
+        return false;
+    return value.size() <= readThroughCacheMaxEntrySize - key.size();
 }
 
 static uint32_t string_address_to_uint32_t(const string& ip, bool& error)
@@ -143,7 +151,11 @@ riorita::Bytes processRequest(const string& remoteAddr, const riorita::Request& 
             verdict = true;
         }
         else
+        {
             verdict = storage->get(key, data);
+            if (verdict && shouldReadThroughCache(key, data))
+                cache.put(key, data);
+        }
     }
 
 #undef DELETE
@@ -519,6 +531,7 @@ int main(int argc, char* argv[])
 
         string maxCacheEntrySize;
         string maxCacheSize; 
+        string readThroughCacheMaxEntrySizeStr;
 
         description.add_options()
             ("help", "Help message")
@@ -529,6 +542,7 @@ int main(int argc, char* argv[])
             ("allowed", po::value<string>(&allowedRemoteAddrs)->default_value("0.0.0.0;127.0.0.1"), "Allows remote addresses: example '212.193.32.0/19;0.0.0.0;127.0.0.1'")
             ("maxCacheEntrySize", po::value<string>(&maxCacheEntrySize)->default_value(to_string(riorita::Cache::MAX_CACHE_ENTRY_SIZE)), "Max size of inmemory cache entry: example '16M'")
             ("maxCacheSize", po::value<string>(&maxCacheSize)->default_value(to_string(riorita::Cache::MAX_CACHE_SIZE)), "Max total size of inmemory cache: example '16G'")
+            ("readThroughCacheMaxEntrySize", po::value<string>(&readThroughCacheMaxEntrySizeStr)->default_value("4M"), "Max entry size cached after a successful GET miss: example '4M'")
             ("verboseRequests", po::bool_switch(&verboseRequests)->default_value(false), "Log every request processing step")
             ("slowRequestThresholdMillis", po::value<long long>(&slowRequestThresholdMillis)->default_value(slowRequestThresholdMillis), "Log processed requests taking at least this many milliseconds")
         ;
@@ -545,6 +559,7 @@ int main(int argc, char* argv[])
 
         riorita::Cache::MAX_CACHE_ENTRY_SIZE = convertSize("maxCacheEntrySize", maxCacheEntrySize);
         riorita::Cache::MAX_CACHE_SIZE = convertSize("maxCacheSize", maxCacheSize);
+        readThroughCacheMaxEntrySize = convertSize("readThroughCacheMaxEntrySize", readThroughCacheMaxEntrySizeStr);
         if (slowRequestThresholdMillis < 0)
         {
             cerr << "slowRequestThresholdMillis must be non-negative" << endl;
@@ -563,6 +578,8 @@ int main(int argc, char* argv[])
             << riorita::Cache::MAX_CACHE_ENTRY_SIZE
             << ", maxCacheSize="
             << riorita::Cache::MAX_CACHE_SIZE
+            << ", readThroughCacheMaxEntrySize="
+            << readThroughCacheMaxEntrySize
             << "}"
             << endl;
         *lout << "Request logging setup {verboseRequests="
