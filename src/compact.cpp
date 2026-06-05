@@ -1,6 +1,8 @@
 #include "compact.h"
 #include "logger.h"
 
+#include <cerrno>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <cassert>
@@ -238,6 +240,7 @@ void FileSystemCompactStorage::appendNameAndPosition(const string& name, const P
 
 void FileSystemCompactStorage::readIndexFile()
 {
+    auto startTime = std::chrono::steady_clock::now();
     boost::unique_lock<boost::shared_mutex> scoped_lock(mutex);
 
     // Lock all group-specific mutexes to ensure no race conditions on group data
@@ -248,6 +251,21 @@ void FileSystemCompactStorage::readIndexFile()
     }
 
     string indexFile = concatPath(dir, INDEX_FILE);
+    boost::system::error_code fileStatusError;
+    uintmax_t indexFileSize = 0;
+    bool indexFileExists = boost::filesystem::exists(indexFile, fileStatusError);
+    if (!indexFileExists && fileStatusError.value() == ENOENT)
+        fileStatusError.clear();
+    if (indexFileExists && !fileStatusError)
+    {
+        boost::system::error_code fileSizeError;
+        uintmax_t detectedIndexFileSize = boost::filesystem::file_size(indexFile, fileSizeError);
+        if (fileSizeError)
+            fileStatusError = fileSizeError;
+        else
+            indexFileSize = detectedIndexFileSize;
+    }
+
     FILE* indexFilePtr = fopen(indexFile.c_str(), "rb");
     
     bool hasError = false;
@@ -305,5 +323,20 @@ void FileSystemCompactStorage::readIndexFile()
         fclose(indexFilePtr);
     }
 
-    *lout << "Read index file [count=" << positionByName.size() << "]" << endl;
+    long long elapsedMillis = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - startTime).count();
+
+    *lout << "Read index file [count=" << positionByName.size()
+        << ", bytes=" << indexFileSize
+        << ", elapsedMillis=" << elapsedMillis
+        << ", exists=" << indexFileExists
+        << ", fileStatusError=" << (fileStatusError ? fileStatusError.message() : "none")
+        << ", readError=" << hasError
+        << ", eof=" << hasEof
+        << "]" << endl;
+    for (int group = 0; group < groups; group++)
+        *lout << "Compact storage group [group=" << group
+            << ", index=" << indices[group]
+            << ", offset=" << offsets[group]
+            << "]" << endl;
 }   

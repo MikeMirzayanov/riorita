@@ -588,6 +588,7 @@ int main(int argc, char* argv[])
             << slowRequestThresholdMillis
             << "}"
             << endl;
+        *lout << std::flush;
     }
 
     *lout << "Starting riorita server" << endl;
