@@ -4,6 +4,7 @@
 #include <string>
 #include <map>
 #include <cstdlib>
+#include <vector>
 
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/thread.hpp>
@@ -33,12 +34,16 @@ public:
         timestamp current_timestamp, timestamp lifetime, bool overwrite);
     bool erase(const std::string& section, const std::string& name, timestamp current_timestamp);
     void erase(const std::string& section);
+    void clear();
     void close();
     const std::string get_dir();
     int get_groups();
 
 private:
-    void readIndexFile();
+    bool readIndexFile();
+    void clearWithoutLocks();
+    void resetInMemoryIndex();
+    void recoverFromCorruption(const std::string& reason);
     void appendSectionNameAndPosition(const std::string& section, const std::string& name, const Position& position);
     void prepareDataFile(int group, int index);
     void put(int group, int index, const std::string& data, int fp);

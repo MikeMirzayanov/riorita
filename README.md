@@ -6,6 +6,30 @@ It is written using C++ on the top of boost::asio::io_service. Also contains Jav
 
 On Ubuntu you can install requirements with `apt install g++ libsnappy-dev libleveldb-dev librocksdb-dev libboost-all-dev`
 
+## Native compact-only build
+
+For a production build that only needs the `compact` backend, install a C++
+compiler plus the Boost and Snappy development packages, then compile on the
+server that will run the binary:
+
+```sh
+cd src
+./compile.sh
+```
+
+The script uses `-march=native`, `-Ofast`, and LTO, and deliberately does not
+link LevelDB or RocksDB. Do not copy its output to a machine with a different
+or older CPU.
+
+Bind a private listener explicitly when the service must not listen on every
+host interface:
+
+```sh
+./riorita --backend compact --bind 10.0.0.3 --port 2501 \
+  --data /opt/riorita/data --log /opt/riorita/riorita.log \
+  --allowed '127.0.0.1;10.0.0.0/24'
+```
+
 ## Protocol
 
 Riorita uses a very simple binary request-response protocol. It supports keep-alive out-of-the-box, a client should connect to the

@@ -31,7 +31,8 @@ using namespace std;
 const riorita::int32 MIN_VALID_REQUEST_SIZE = 15;
 const riorita::int32 MAX_VALID_REQUEST_SIZE = 1073741824;
 const size_t IO_THREAD_COUNT = 12;
-const string RIORITA_VERSION = "1.1";
+const string RIORITA_VERSION = "1.1.1";
+const string RIORITA_RELEASE_INFO = "2026-07-17, added configurable bind address, native storage recovery and stronger load tests";
 const string RIORITA_BUILD_TIME = __DATE__ " " __TIME__;
 
 class Session;
@@ -523,7 +524,9 @@ size_t convertSize(const string& fieldName, const string& sizeStr)
 int main(int argc, char* argv[])
 {
     int port;
+    string listenAddress;
     string allowedRemoteAddrs;
+    boost::asio::ip::address_v4 parsedListenAddress;
     
     {
         po::options_description description("=== riorita ===\nOptions");
@@ -541,6 +544,7 @@ int main(int argc, char* argv[])
             ("log", po::value<string>(&logFile)->default_value("riorita.log"), "Log file")
             ("data", po::value<string>(&dataDir)->default_value("data"), "Data directory")
             ("backend", po::value<string>(&backend)->default_value(DEFAULT_BACKEND), "Backend: rocksdb, leveldb, files, compact or memory")
+            ("bind", po::value<string>(&listenAddress)->default_value("0.0.0.0"), "IPv4 listen address")
             ("port", po::value<int>(&port)->default_value(8024), "Port")
             ("allowed", po::value<string>(&allowedRemoteAddrs)->default_value("0.0.0.0;127.0.0.1"), "Allows remote addresses: example '212.193.32.0/19;0.0.0.0;127.0.0.1'")
             ("maxCacheEntrySize", po::value<string>(&maxCacheEntrySize)->default_value(to_string(riorita::Cache::MAX_CACHE_ENTRY_SIZE)), "Max size of inmemory cache entry: example '16M'")
@@ -557,6 +561,22 @@ int main(int argc, char* argv[])
         if (varmap.count("help"))
         {
             cout << description << endl;
+            return 1;
+        }
+
+        if (port < 1 || port > 65535)
+        {
+            cerr << "Port must be in range 1..65535" << endl;
+            return 1;
+        }
+
+        boost::system::error_code listenAddressError;
+        parsedListenAddress = boost::asio::ip::address_v4::from_string(
+                listenAddress, listenAddressError);
+        if (listenAddressError)
+        {
+            cerr << "Invalid IPv4 listen address '" << listenAddress
+                << "': " << listenAddressError.message() << endl;
             return 1;
         }
 
@@ -595,13 +615,16 @@ int main(int argc, char* argv[])
     }
 
     *lout << "Starting riorita server" << endl;
+    *lout << "riorita-" << RIORITA_VERSION << " version ["
+        << RIORITA_RELEASE_INFO << "]." << endl;
 
     try
     {
         RioritaServerList servers;
         {
-            *lout << "Listen port " << port << endl;
-            tcp::endpoint endpoint(tcp::v4(), short(port));
+            *lout << "Listen address " << parsedListenAddress.to_string()
+                << ":" << port << endl;
+            tcp::endpoint endpoint(parsedListenAddress, static_cast<unsigned short>(port));
             RioritaServerPtr server(new RioritaServer(io_service, endpoint, allowedRemoteAddrs));
             servers.push_back(server);
         }
